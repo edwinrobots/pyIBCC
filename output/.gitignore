@@ -6,3 +6,13 @@
 /output.csv
 /combined_categories.csv
 /popdensity.png
+/arguments_mace_competence.csv
+/arguments_mace_predicted_labels.csv
+/arguments_mace_probabilities.csv
+/arguments_pyibcc_predicted_labels.csv
+/arguments_pyibcc_probabilities.csv
+/popdensity_mace_competence.csv
+/popdensity_mace_predicted_labels.csv
+/popdensity_mace_probabilities.csv
+/popdensity_pyibcc_predicted_labels.csv
+/popdensity_pyibcc_probabilities.csv
