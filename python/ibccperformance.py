@@ -6,7 +6,7 @@ Created on 22 Apr 2014
 
 import ibcc
 import numpy as np
-from sklearn.cross_validation import KFold
+#from sklearn.cross_validation import KFold
 from sklearn.metrics import roc_curve, average_precision_score, auc
 import matplotlib.pyplot as plt
 import os, logging
