@@ -20,6 +20,10 @@ class DataHandler(object):
     nclasses = 2
     nu0 = np.array([50.0, 50.0])
     alpha0 = np.array([[2, 1], [1, 2]])  
+    phi0 = np.array([1, 1])
+    gamma0 = np.array([[2, 1], [1, 2]]) 
+    a0 = 3
+    b0 = 1
 
     ####################################
     
@@ -84,12 +88,12 @@ class DataHandler(object):
         self.crowdlabels = crowdLabels
         self.K = K
         print crowdLabels.shape
-        if not pyFileExists:
-            try:
-                with open(self.input_file+'.dat', 'wb') as outFile:
-                    pickle.dump((crowdLabels,self.targetidxs,K), outFile)
-            except Exception:
-                logging.error('Could not save the input data as a Python object file.')
+#         if not pyFileExists:
+#             try:
+#                 with open(self.input_file+'.dat', 'wb') as outFile:
+#                     pickle.dump((crowdLabels,self.targetidxs,K), outFile)
+#             except Exception:
+#                 logging.error('Could not save the input data as a Python object file.')
         
     def loadCrowdTable(self, scores):
         '''
@@ -221,6 +225,10 @@ class DataHandler(object):
         nu0 = self.nu0
         alpha0 = self.alpha0 
         uselowerbound = self.uselowerbound
+        phi0 = self.phi0
+        gamma0 = self.gamma0
+        a0 = self.a0
+        b0 = self.b0
         
         #read configuration
         with open(configFile, 'r') as conf:
@@ -243,6 +251,11 @@ class DataHandler(object):
         self.nclasses = nClasses
         self.nu0 = nu0
         self.alpha0 = alpha0
+        self.phi0 = phi0
+        self.gamma0 = gamma0      
+        self.a0 = a0
+        self.b0 = b0  
+        
         self.uselowerbound = uselowerbound
     
         #load labels from crowd

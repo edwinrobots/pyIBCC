@@ -242,12 +242,20 @@ class HCBCC(CBCC):
 # a_\alpha --> we don't use these here, just a point value for the concentration?
 # b_\alpha --> "
 
-    def __init__(self, nclasses=2, nscores=2, alpha0=None, nu0=None, cluster_prec_shape=2, cluster_prec_scale=1, 
+    def __init__(self, nclasses=2, nscores=2, phi0=None, gamma0=None, nu0=None, cluster_prec_shape=2, cluster_prec_scale=1, 
                  nworkers=1, uselowerbound=False, dh=None):
-        super(HCBCC, self).__init__(nclasses=nclasses, nscores=nscores, alpha0=alpha0, nu0=nu0, K=nworkers, 
+        super(HCBCC, self).__init__(nclasses=nclasses, nscores=nscores, alpha0=[], nu0=nu0, K=nworkers, 
                                    uselowerbound=uselowerbound, dh=dh)
-        self.a0 = float(cluster_prec_shape)
-        self.b0 = float(cluster_prec_scale)
+        if dh != None:
+            self.phi0 = dh.phi0.astype(float)
+            self.gamma0 = dh.gamma0.astype(float)
+            self.a0 = float(dh.a0)
+            self.b0 = float(dh.b0)
+        else:
+            self.phi0 = phi0.astype(float)
+            self.gamma0 = gamma0.astype(float)
+            self.a0 = float(cluster_prec_shape)
+            self.b0 = float(cluster_prec_scale)
             
     def init_responsibilities(self):
         self.r = 1.0 / self.nclusters + np.zeros((self.K, self.nclusters))
@@ -263,44 +271,23 @@ class HCBCC(CBCC):
            - : the prior hyperhyperparameters for the cluster alphas
            - alpha: the posterior alphas for each worker
         '''
-        self.alpha0 = self.alpha0.astype(float)
-        # if we specify different alpha0 for some agents, we need to do so for all K agents. The last agent passed in 
-        # will be duplicated for any missing agents.
-        if np.any(self.clusteridxs_alpha0): # map from diags list of cluster IDs
-            if not np.any(self.alpha0_cluster):
-                self.alpha0_cluster = self.alpha0
-                self.alpha0_length = self.alpha0_cluster.shape[2]
-            self.alpha0 = self.alpha0_cluster[:, :, self.clusteridxs_alpha0]        
-        else:
-            if len(self.alpha0.shape)==2:
-                self.alpha0  = self.alpha0[:,:,np.newaxis]
-                            
-            if self.alpha0.shape[2] < self.nclusters:
-                # We have a new dataset with more agents than before -- create more priors.
-                nnew = self.nclusters - self.alpha0.shape[2]
-                alpha0new = self.alpha0[:, :, 0]
-                alpha0new = alpha0new[:, :, np.newaxis]
-                alpha0new = np.repeat(alpha0new, nnew, axis=2)
-                self.alpha0 = np.concatenate((self.alpha0, alpha0new), axis=2)
-        # Make sure self.alpha is the right size as well. Values of self.alpha not important as we recalculate below
-        self.alpha0 = self.alpha0[:, :, :self.nclusters] # make this the right size if there are fewer classifiers than expected
-                
         # Now translate alpha0 into mean and precision for the prior over alpha
-        self.gamma0 = self.alpha0 / np.sum(self.alpha0, 1)[:, np.newaxis, :]
-        self.phi0 = np.sum(self.alpha0, 1)[:, np.newaxis, :]
+        self.gamma0 = self.gamma0[:, :, np.newaxis]
+        self.phi0 = self.phi0[:, np.newaxis, np.newaxis]
             
         # Now we can initialise eta
-        self.eta = self.gamma0.copy()
+        self.eta = np.repeat((self.gamma0 * self.phi0) / np.sum(self.gamma0 * self.phi0, axis=1)[:, np.newaxis, :], 
+                             self.nclusters, axis=2)
+        self.phigamma = np.zeros((self.nclasses, self.nscores, self.nclusters))
         # Initialise beta, the precision across the cluster
         self.beta = np.zeros((self.nclasses, 1, self.nclusters), dtype=np.float) + (self.a0 / self.b0)
         
         # The prior per-cluster parameters are eta and beta, and each individual worker is drawn using those priors.
         # The workers have individual posteriors with variational parameters alpha. Initialise by assuming workers have
         #equal probability of each cluster:
-        self.alpha = np.zeros((self.nclasses, self.nscores, self.K), dtype=np.float) \
-                        + np.mean(self.eta / self.beta, axis=2)[:, :, np.newaxis]
-        self.alpha_tr = np.zeros((self.nclasses, self.nscores, self.K))
-
+        self.alpha_tr = np.zeros((self.nclasses, self.nscores, self.K)) + np.sum(self.eta * self.beta / self.nclusters, 
+                                                                                 axis=2)[:, :, np.newaxis]
+        self.alpha = self.alpha_tr.copy()
         self.lnPi = np.zeros((self.nclasses, self.nscores, self.K)) 
         self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
 
@@ -359,31 +346,26 @@ class HCBCC(CBCC):
         
         for j in range(self.nclasses):
             # v_j^(k) ~ Beta( \beta_j^{q_k} ), where q_k is the cluster ID of worker k
-            logv_j = psi(self.beta[j, :, :]) - psi(np.sum(self.beta[j, :, :]))
-            logv_j = logv_j.dot(self.r.T)
+            logv_j = psi(self.beta[j, :, :].dot(self.r.T)) - psi(self.beta[j, :, :].dot(self.r.T) + np.sum(worker_counts[j, :, :], axis=0)[np.newaxis, :])
         
             # s^(k)_{j, l} ~ Antoniak( n^(k)_{j, l}, \beta_j^{q_k} \eta_{j, l}^{q_k} )
-            s_j = np.zeros((self.nscores, self.K))
-            for l in range(self.nscores):
-                counts = worker_counts[j, l, :]
-                conc = (self.beta[j, l, :] * self.eta[j, l, :])
-                #s_j = np.zeros((self.nscores, self.K))
-                #for i in range(int(np.max(counts))):
-                #    s_j += conc / (conc + i - 1) * (i<counts)
-                #P1 = counts 
-                #s_j = conc * P1 * (psi(conc * P1 + counts) - psi(conc * P1))
-                for k in range(self.K):
-                    for cl in range(self.nclusters):  
-                        # !!! Counts cannot be fractions!!!
-                        s_j[l, k] += antoniak.expectation(conc[cl], counts[k]) * self.r[k, cl]
-            # the s should be related to the expected pseudo-count for each cluster member...
-            # could get expectation of s by sampling n 
-                
+            #The exact computation of the expected number of tables is given in: 
+            # A Note on the Implementation of Hierarchical Dirichlet Processes, Phil Blunsom et al.
+            #The antoniak distribution is explained in: Distributed Algorithms for Topic Models, David Newman et al.
+            s_j = np.zeros((self.nscores, self.nclusters))
+            for l in range(self.nscores):            
+                counts = worker_counts[j, l, :][:, np.newaxis]
+                conc = (self.beta[j, 0, :] * self.eta[j, l, :])[np.newaxis, :]
+                # For the updates to eta and beta, we take an expectation of ln p(s^(k)_{j, l}) over cluster membership of k by 
+                # computing s^(k) using a weighted sum with weights p(q_k = m)
+                # -- this follows from the equations in Moreno and Teh
+                s_jl = conc * (psi(conc + counts) - psi(conc)) # nclusters x K
+                s_j[l, :] = np.sum(s_jl * self.r, axis=0)
                 
             # \eta_j^(m) ~ Dir( sum_{ k where q_k=m } s^(k)_{j, .} + \phi_j \gamma_j )
             # We need to determine expectation of \eta
-            self.phigamma = s_j + self.phi0[j, :, :] * self.gamma0[j, :, :]
-            self.eta[j, :, :] = self.phigamma / np.sum(self.phigamma[j, :, :], axis=0)[np.newaxis, :] 
+            self.phigamma[j, :, :] = s_j + self.phi0[j, :, :] * self.gamma0[j, :, :]
+            self.eta[j, :, :] = self.phigamma[j, :, :] / np.sum(self.phigamma[j, :, :], axis=0)[np.newaxis, :] 
          
             # \beta_j^(k) ~ Gamma( sum_{k where q_k=m} sum_{l} s_{j, l}^(k) + a_j, b_j - sum_{k where q_k=m} log(v_{j}^(k) ) )
             # we need expectation of beta
@@ -393,7 +375,7 @@ class HCBCC(CBCC):
         
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
     def post_lnpi(self):
-        x_eta = np.sum((self.alpha0 - 1) * self.eta, 1)
+        x_eta = np.sum((self.phi0*self.gamma0 - 1) * self.eta, 1)
         z_eta = (gammaln(np.sum(self.alpha0, 1)) - np.sum(gammaln(self.alpha0), 1))[:, np.newaxis]
         
         lnp_beta = gamma.logpdf(self.beta, self.a0, scale=self.b0)
@@ -410,7 +392,7 @@ class HCBCC(CBCC):
         # responsibilities
         logp_membership = np.sum(self.r * self.logw[np.newaxis, :])
         
-        return np.sum(x_eta + z_eta) + np.sum(lnp_beta) + np.sum(x + z) + w_x + w_z + logp_membership
+        return np.sum(x_eta + z_eta) + np.sum(lnp_beta) + w_x + w_z + logp_membership + np.sum(x + z)
                     
     def q_lnPi(self):
         x_eta = np.sum((self.phigamma - 1) * self.eta, 1)
@@ -428,7 +410,7 @@ class HCBCC(CBCC):
         #responsibilities
         logq_membership = np.sum(self.r * self.lnr)
         
-        return np.sum(x_eta + z_eta) + np.sum(lnq_beta) + np.sum(x + z) + w_x + w_z + logq_membership
+        return np.sum(x_eta + z_eta) + np.sum(lnq_beta) + w_x + w_z + logq_membership + np.sum(x + z) 
             
     
 # Loader and Runner helper functions -------------------------------------------------------------------------------    
@@ -441,5 +423,6 @@ if __name__ == '__main__':
         configFile = sys.argv[1]
     else:
         configFile = './config/my_project.py'        
-    ibcc.load_and_run_ibcc(configFile, ibcc_class=HCBCC)
-    ibcc.load_and_run_ibcc(configFile, ibcc_class=CBCC)    
+    pT, combiner = ibcc.load_and_run_ibcc(configFile, ibcc_class=HCBCC)
+    pT2, combiner2 = ibcc.load_and_run_ibcc(configFile, ibcc_class=CBCC)
+    pTbase, combinerbase = ibcc.load_and_run_ibcc(configFile, ibcc_class=ibcc.IBCC)    
