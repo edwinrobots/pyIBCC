@@ -39,3 +39,15 @@ output/ph/
 .spyderproject
 /.directory
 /.DS_Store
+output/arguments_mace_competence.csv
+output/arguments_mace_predicted_labels.csv
+output/arguments_mace_probabilities.csv
+output/arguments_pyibcc_predicted_labels.csv
+output/arguments_pyibcc_probabilities.csv
+output/combined_categories.csv
+output/popdensity_mace_competence.csv
+output/popdensity_mace_predicted_labels.csv
+output/popdensity_mace_probabilities.csv
+output/popdensity.png
+output/popdensity_pyibcc_predicted_labels.csv
+output/popdensity_pyibcc_probabilities.csv
