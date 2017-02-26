@@ -8,7 +8,7 @@ from scipy.sparse import coo_matrix, csr_matrix
 from scipy.special import psi, gammaln, digamma
 from ibccdata import DataHandler
 from scipy.optimize import fmin, fmin_cobyla
-from scipy.stats import gamma
+from scipy.stats import gamma, beta as beta_dist, bernoulli
 import antoniak
 
 import ibcc 
@@ -32,9 +32,12 @@ class CBCC(ibcc.IBCC):
 # b_\alpha --> "
       
 # Model parameters and hyper-parameters -----------------------------------------------------------------------------
-
-    conc_prior = 1 # concentration hyperparameter
-    nclusters = 100 
+    def __init__(self, nclasses=2, nscores=2, alpha0=None, nu0=None, conc_prior=1, nclusters=100, 
+                 K=1, uselowerbound=False, dh=None):
+        super(CBCC, self).__init__(nclasses, nscores, alpha0, nu0, K, uselowerbound, dh)
+        
+        self.conc_prior = conc_prior # concentration hyperparameter
+        self.nclusters = nclusters         
 
 # Initialisation ---------------------------------------------------------------------------------------------------
 
@@ -242,20 +245,20 @@ class HCBCC(CBCC):
 # a_\alpha --> we don't use these here, just a point value for the concentration?
 # b_\alpha --> "
 
-    def __init__(self, nclasses=2, nscores=2, phi0=None, gamma0=None, nu0=None, cluster_prec_shape=2, cluster_prec_scale=1, 
-                 nworkers=1, uselowerbound=False, dh=None):
-        super(HCBCC, self).__init__(nclasses=nclasses, nscores=nscores, alpha0=[], nu0=nu0, K=nworkers, 
-                                   uselowerbound=uselowerbound, dh=dh)
+    def __init__(self, nclasses=2, nscores=2, phi0=None, gamma0=None, nu0=None, cluster_prec_shape=2, 
+                 cluster_prec_scale=1, conc_prior=1, nclusters=100, nworkers=1, uselowerbound=False, dh=None):
+        super(HCBCC, self).__init__(nclasses=nclasses, nscores=nscores, alpha0=np.array([]), nu0=nu0, conc_prior=1, 
+                                    nclusters=100, K=nworkers, uselowerbound=uselowerbound, dh=dh)
         if dh != None:
             self.phi0 = dh.phi0.astype(float)
             self.gamma0 = dh.gamma0.astype(float)
             self.a0 = float(dh.a0)
             self.b0 = float(dh.b0)
         else:
-            self.phi0 = phi0.astype(float)
+            self.phi0 = np.array(phi0).astype(float)
             self.gamma0 = gamma0.astype(float)
-            self.a0 = float(cluster_prec_shape)
-            self.b0 = float(cluster_prec_scale)
+            self.a0 = np.array(cluster_prec_shape).astype(float)
+            self.b0 = np.array(cluster_prec_scale).astype(float)
             
     def init_responsibilities(self):
         self.r = 1.0 / self.nclusters + np.zeros((self.K, self.nclusters))
@@ -280,7 +283,8 @@ class HCBCC(CBCC):
                              self.nclusters, axis=2)
         self.phigamma = np.zeros((self.nclasses, self.nscores, self.nclusters))
         # Initialise beta, the precision across the cluster
-        self.beta = np.zeros((self.nclasses, 1, self.nclusters), dtype=np.float) + (self.a0 / self.b0)
+        self.beta = np.zeros((self.nclasses, 1, self.nclusters), dtype=np.float) + (self.a0[:, np.newaxis, np.newaxis] 
+                                                                                / self.b0[:, np.newaxis, np.newaxis])
         
         # The prior per-cluster parameters are eta and beta, and each individual worker is drawn using those priors.
         # The workers have individual posteriors with variational parameters alpha. Initialise by assuming workers have
@@ -288,7 +292,8 @@ class HCBCC(CBCC):
         self.alpha_tr = np.zeros((self.nclasses, self.nscores, self.K)) + np.sum(self.eta * self.beta / self.nclusters, 
                                                                                  axis=2)[:, :, np.newaxis]
         self.alpha = self.alpha_tr.copy()
-        self.lnPi = np.zeros((self.nclasses, self.nscores, self.K)) 
+        self.lnPi = np.zeros((self.nclasses, self.nscores, self.K)) + \
+                        np.log(self.alpha_tr / np.sum(self.alpha_tr, axis=1)[:, np.newaxis, :])
         self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
 
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
@@ -369,16 +374,16 @@ class HCBCC(CBCC):
          
             # \beta_j^(k) ~ Gamma( sum_{k where q_k=m} sum_{l} s_{j, l}^(k) + a_j, b_j - sum_{k where q_k=m} log(v_{j}^(k) ) )
             # we need expectation of beta
-            self.a[j, :, :] = np.sum(s_j, axis=0) + self.a0
-            self.b[j, :, :] = self.b0 - logv_j.dot(self.r)
+            self.a[j, :, :] = np.sum(s_j, axis=0) + self.a0[j]
+            self.b[j, :, :] = self.b0[j] - logv_j.dot(self.r)
         self.beta = self.a / self.b 
         
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
     def post_lnpi(self):
         x_eta = np.sum((self.phi0*self.gamma0 - 1) * self.eta, 1)
-        z_eta = (gammaln(np.sum(self.alpha0, 1)) - np.sum(gammaln(self.alpha0), 1))[:, np.newaxis]
+        z_eta = (gammaln(np.sum(self.phi0*self.gamma0, 1)) - np.sum(gammaln(self.phi0*self.gamma0), 1))[:, np.newaxis]
         
-        lnp_beta = gamma.logpdf(self.beta, self.a0, scale=self.b0)
+        lnp_beta = gamma.logpdf(self.beta, self.a0[:, np.newaxis, np.newaxis], scale=self.b0[:, np.newaxis, np.newaxis])
         
         cluster_params = (self.eta * self.beta).dot(self.r.T)
         x = np.sum((cluster_params - 1) * self.lnPi, 1)
@@ -415,6 +420,72 @@ class HCBCC(CBCC):
     
 # Loader and Runner helper functions -------------------------------------------------------------------------------    
 
+def gen_synth_data():
+
+    eta = np.zeros((nclasses, nclasses, nclusters))
+    beta = np.zeros((nclasses, 1, nclusters))
+    for j in range(nclasses):
+        for l in range(nclasses):
+            a = phi0[j] * gamma0[j, l]
+            b = np.sum(phi0[j] * gamma0[j, :]) - a
+            eta[j, l, :] = beta_dist.rvs(a, b, size=nclusters)
+    
+        beta[j, 0, :] = gamma.rvs(a0[j], scale=b0[j], size=nclusters)
+
+    #choose cluster membership
+    r = np.zeros(nworkers, dtype=int)
+    cluster_counts = np.zeros(nclusters)
+    cluster_counts[0] += 1 # the first worker is always in cluster 0
+    for k in range(1, nworkers):
+        p_new_cluster = conc_prior_alpha / (conc_prior_alpha + k - 1)
+        new_cluster = bernoulli.rvs(p_new_cluster)
+        if new_cluster:
+            r[k] = np.max(r) + 1
+        else:
+            probs = cluster_counts / (conc_prior_alpha + k - 1)
+            assigned = False
+            for cl in range(nclusters):
+                assigned = bernoulli.rvs(probs[cl])
+                if assigned:
+                    r[k] = cl
+                    break
+            
+        cluster_counts[r[k]] += 1
+    
+    print "Cluster memberships: "
+    print r
+    
+    pi = np.zeros((nclasses, nclasses, nworkers))
+    for j in range(nclasses):
+        for l in range(nclasses):
+            a = beta[j, 0, r] * eta[j, l, r]
+            b = np.sum(beta[j, :, r] * eta[j, :, r], axis=1) - a
+            pi[j, l, :] = beta_dist.rvs(a, b, size=nworkers)
+    
+    kappa = np.zeros(nclasses)
+    t = np.zeros(N, dtype=int) - 1
+    for j in range(nclasses):
+        kappa[j] = beta_dist.rvs(nu0[j], np.sum(nu0) - nu0[j])
+        
+    for j in range(nclasses):
+        notset = t == -1
+        if j == nclasses - 1:
+            t[notset] = j
+        else:
+            thisclass = bernoulli.rvs(kappa[j] / np.sum(kappa[j:]), size=N)
+            t[notset & thisclass.astype(bool)] = j
+    
+    C = np.zeros((N, nworkers)) - 1
+    for k in range(nworkers):
+        for l in range(nclasses):
+            notset = C[:, k] == -1
+            if l == nclasses - 1:
+                C[notset, k] = l
+            else:
+                thisclass = bernoulli.rvs(pi[t, l, k] / (np.sum(pi[t, l:, k], axis=1)) )
+                C[thisclass.astype(bool) & notset, k] = l
+    return t, C, pi, kappa, eta, beta, r
+
 if __name__ == '__main__':
     
     logging.basicConfig(level=logging.DEBUG)
@@ -423,6 +494,66 @@ if __name__ == '__main__':
         configFile = sys.argv[1]
     else:
         configFile = './config/my_project.py'        
-    pT, combiner = ibcc.load_and_run_ibcc(configFile, ibcc_class=HCBCC)
-    pT2, combiner2 = ibcc.load_and_run_ibcc(configFile, ibcc_class=CBCC)
-    pTbase, combinerbase = ibcc.load_and_run_ibcc(configFile, ibcc_class=ibcc.IBCC)    
+#     pT, combiner = ibcc.load_and_run_ibcc(configFile, ibcc_class=HCBCC)
+#     pT2, combiner2 = ibcc.load_and_run_ibcc(configFile, ibcc_class=CBCC)
+#     pTbase, combinerbase = ibcc.load_and_run_ibcc(configFile, ibcc_class=ibcc.IBCC)    
+
+    N = 500
+    nclasses = 3
+    nworkers = 200
+    nclusters = nworkers
+    conc_prior_alpha = 0.1
+    # generate dirichlet parameters for each cluster
+    phi0 = np.zeros(nclasses) + 3
+    gamma0 = np.zeros((nclasses, nclasses)) + 0.3
+    gamma0[np.arange(nclasses), np.arange(nclasses)] = 0.7
+    a0 = np.zeros(nclasses) + 30
+    b0 = np.zeros(nclasses) + 2
+    nu0 = np.zeros(nclasses) + 100
+
+    t, C, pi, kappa, eta, beta, r = gen_synth_data()
+    
+    tablesize = C.shape[0] * C.shape[1]
+    sparsity = 0.975
+    acc_results = []
+    while(sparsity > 0.825):
+        availableidxs = np.random.choice(np.arange(tablesize), int(np.round(sparsity * tablesize)))
+        availableidxs = np.unravel_index(availableidxs, dims=C.shape)
+        Csparse = np.zeros(C.shape) - 1
+        Csparse[availableidxs] = C[availableidxs]
+        
+        hcbcc_combiner = HCBCC(nclasses, nclasses, phi0, gamma0, nu0, a0, b0, C.shape[1], uselowerbound=True)
+        hcbcc_combiner.uselowerbound = True        
+        pT = hcbcc_combiner.combine_classifications(Csparse, table_format=True)
+        
+        sparsity -= 0.025
+    
+        predictedclass = np.argmax(pT, axis=1)
+    
+        from sklearn.metrics import accuracy_score
+    
+        acc = accuracy_score(t, predictedclass)
+        print "accuracy: %f" % acc
+        acc_results.append(acc)
+          
+    import matplotlib.pyplot as plt
+    plt.figure()
+    plt.plot(acc_results)
+    
+#     print hcbcc_combiner.r
+#     
+#     # test the similarities between inferred and ground truth of pi
+#     hellinger = np.zeros((nclasses, nworkers))
+#     abs_diff = np.zeros((nclasses, nworkers))
+#     for k in range(nworkers):
+#         for j in range(nclasses):
+#             #print " Expected pi for cluster %i" % cl
+#             pi_true = pi[j, :, k] #eta[j, :, r[k]] * beta
+#             pi_inferred = (hcbcc_combiner.eta[j, :, :] * hcbcc_combiner.beta[j, :, :]).dot(hcbcc_combiner.r[k, :].T) 
+#             pi_inferred = pi_inferred / np.sum(pi_inferred, axis=0)
+#                             
+#             hellinger[j, k] = 1.0 / np.sqrt(2) * np.sqrt(np.sum((np.sqrt(pi_true) - np.sqrt(pi_inferred))**2))
+#             print "hellinger distance for class %i and worker %i: %f" % (j, k, hellinger[j,k])
+#             
+#             abs_diff[j, k] = np.abs(pi_true[1] - pi_inferred[1])
+#             print "Absolut difference (exptect error rate) for class %i and worker %i: %f" % (j, k, abs_diff[j, k])
