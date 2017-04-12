@@ -75,7 +75,7 @@ class PrefBCC(IBCC):
         self.alpha_tr = []
         
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
-    def post_Alpha(self):  # Posterior Hyperparams           
+    def _post_Alpha(self):  # Posterior Hyperparams           
         # Add the counts from the test data
         for j in range(self.nclasses):
             Tj = self.E_t[:, j].reshape((self.Ntest, 1))

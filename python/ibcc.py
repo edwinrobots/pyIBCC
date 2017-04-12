@@ -1,4 +1,7 @@
 '''
+
+Refactoring -- create the inits for the new classes
+
 @author: Edwin Simpson
 '''
 import sys, logging
@@ -7,9 +10,150 @@ from copy import deepcopy
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.special import psi, gammaln
 from ibccdata import DataHandler
-from scipy.optimize import fmin, fmin_cobyla
+from scipy.optimize import fmin
 from scipy.stats import gamma
 
+class ClassProportions:
+    
+    #hyper-hyper-parameters
+    gam_scale_nu = []
+    gam_shape_nu = 100
+    
+    def __init__(self, nclasses, nu0):
+        self.nclasses = nclasses
+        
+        self.initialised = False
+        
+        self.nu0 = nu0
+        self.lnkappa = []
+        self.nu = []
+        
+        # Ensure we have float arrays so we can do division with these parameters properly
+        self.nu0 = np.array(self.nu0).astype(float)
+        if self.nu0.ndim==1:
+            self.nu0 = self.nu0.reshape((self.nclasses,1))
+        elif self.nu0.shape[0]!=self.nclasses and self.nu0.shape[1]==self.nclasses:
+            self.nu0 = self.nu0.T
+    
+    def init_lnkappa(self):
+        self.nu = deepcopy(np.float64(self.nu0))
+        sumNu = np.sum(self.nu)
+        self.lnkappa = psi(self.nu) - psi(sumNu)
+        
+        self.initialised = True
+
+    def expec_lnkappa(self, E_t):
+        sumET = np.sum(E_t, 0)
+        for j in range(self.nclasses):
+            self.nu[j] = self.nu0[j] + sumET[j]
+        self.lnkappa = psi(self.nu) - psi(np.sum(self.nu))
+        
+    def post_lnkappa(self):
+        lnpKappa = gammaln(np.sum(self.nu0)) - np.sum(gammaln(self.nu0)) + sum((self.nu0 - 1) * self.lnkappa)
+        return lnpKappa
+        
+    def q_lnkappa(self):
+        lnqKappa = gammaln(np.sum(self.nu)) - np.sum(gammaln(self.nu)) + np.sum((self.nu - 1) * self.lnkappa)
+        return lnqKappa
+    
+class ConfusionMatrix:
+    
+    #hyper-hyper-parameters: the parameters for the hyper-prior over the hyper-parameters. These are only used if you
+    # run optimize_hyperparams
+    gam_scale_alpha = []  #Gamma distribution scale parameters 
+    gam_shape_alpha = 1 #Gamma distribution shape parameters --> confidence in seed values       
+
+    def __init__(self, nclasses, nscores, alpha0):
+        self.nclasses = nclasses
+        self.nscores = nscores
+        
+        self.initialised = False
+        
+        self.alpha0 = alpha0
+        self.alpha_tr = None
+        self.lnPi = []
+        self.alpha = []   
+        self.K = 0     
+
+    def init_lnPi(self, K):
+        '''
+        Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
+        either the prior, or where available, values of self.E_t from previous runs.
+        '''
+        self.K = K
+        
+        self.alpha0 = self.alpha0.astype(float)
+        # if we specify different alpha0 for some agents, we need to do so for all K agents. The last agent passed in 
+        # will be duplicated for any missing agents.
+        if len(self.alpha0.shape)==2:
+            self.alpha0  = self.alpha0[:,:,np.newaxis]
+        
+        if self.alpha0.shape[2] < self.K:
+            # We have a new dataset with more agents than before -- create more priors.
+            nnew = self.K - self.alpha0.shape[2]
+            alpha0new = self.alpha0[:, :, 0]
+            alpha0new = alpha0new[:, :, np.newaxis]
+            alpha0new = np.repeat(alpha0new, nnew, axis=2)
+            self.alpha0 = np.concatenate((self.alpha0, alpha0new), axis=2)
+            
+        # Make sure self.alpha is the right size as well. Values of self.alpha not important as we recalculate below
+        self.alpha0 = self.alpha0[:, :, :self.K] # make this the right size if there are fewer classifiers than expected
+        self.alpha = np.zeros((self.nclasses, self.nscores, self.K), dtype=np.float) + self.alpha0
+        self.lnPi = np.zeros((self.nclasses, self.nscores, self.K))        
+        # calculate alpha from the initial/prior values only in the first iteration
+        sumAlpha = np.sum(self.alpha0, 1)
+        psiSumAlpha = psi(sumAlpha)
+        for s in range(self.nscores): 
+            self.lnPi[:, s, :] = psi(self.alpha0[:, s, :]) - psiSumAlpha
+
+        self.initialised = True
+
+    def _train_alpha_counts(self, E_t, Ntrain, trainidxs, C, prior_pseudocounts=[]):
+        if not len(prior_pseudocounts):
+            prior_pseudocounts = self.alpha0
+        
+        # Save the counts from the training data so we only recalculate the test data on every iteration
+        if self.alpha_tr is None:
+            self.alpha_tr = np.zeros(self.alpha.shape)
+            if Ntrain:
+                for j in range(self.nclasses):
+                    for l in range(self.nscores):
+                        Tj = E_t[trainidxs, j].reshape((self.Ntrain, 1))
+                        self.alpha_tr[j,l,:] = C[l][trainidxs,:].T.dot(Tj).reshape(-1)
+            self.alpha_tr += prior_pseudocounts
+
+    def reset_training_data(self):
+        self.alpha_tr = None
+
+    def _post_Alpha(self, E_t, trainidxs, testidxs, C, Ctest, Ntrain, Ntest):  # Posterior Hyperparams
+        self._train_alpha_counts(E_t, Ntrain, trainidxs, C)
+        
+        # Add the counts from the test data
+        for j in range(self.nclasses):
+            for l in range(self.nscores):
+                Tj = E_t[testidxs, j].reshape((Ntest, 1))
+                counts = Ctest[l].T.dot(Tj).reshape(-1)
+                self.alpha[j, l, :] = self.alpha_tr[j, l, :] + counts
+
+    def expec_lnPi(self, E_t, trainidxs, testidxs, C, Ctest, Ntrain, Ntest):
+        # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
+        if np.any(E_t):
+            self._post_Alpha(E_t, trainidxs, testidxs, C, Ctest, Ntrain, Ntest)
+        sumAlpha = np.sum(self.alpha, 1)
+        psiSumAlpha = psi(sumAlpha)
+        for s in range(self.nscores): 
+            self.lnPi[:, s, :] = psi(self.alpha[:, s, :]) - psiSumAlpha
+
+    def post_lnpi(self):
+        x = np.sum((self.alpha0-1) * self.lnPi,1)
+        z = gammaln(np.sum(self.alpha0,1)) - np.sum(gammaln(self.alpha0),1)
+        return np.sum(x+z)
+                    
+    def q_lnPi(self):
+        x = np.sum((self.alpha-1) * self.lnPi,1)
+        z = gammaln(np.sum(self.alpha,1)) - np.sum(gammaln(self.alpha),1)
+        return np.sum(x+z)
+                    
 class IBCC(object):
 # Print extra debug info
     verbose = False
@@ -50,29 +194,19 @@ class IBCC(object):
     lnpCT = None
       
 # Model parameters and hyper-parameters -----------------------------------------------------------------------------
-    #The model
-    alpha0 = None
-    clusteridxs_alpha0 = [] # use this if you want to use an alpha0 where each matrix is diags prior for diags group of agents. This
-    # is and array of indicies that indicates which of the original alpha0 groups should be used for each agent.
-    alpha0_length = 1 # can be either 1, K or nclusters
-    alpha0_cluster = [] # copy of the alpha0 values for each cluster.
-    nu0 = None    
-    lnkappa = []
-    nu = []
-    lnPi = []
-    alpha = []
+    #The model -- most parameters live in the data model and worker model objects
+    # Data model
+    datamodel = None
+    # Worker model
+    workermodel = None    
+
     E_t = []
     E_t_sparse = []
-    #hyper-hyper-parameters: the parameters for the hyper-prior over the hyper-parameters. These are only used if you
-    # run optimize_hyperparams
-    gam_scale_alpha = []  #Gamma distribution scale parameters 
-    gam_shape_alpha = 1 #Gamma distribution shape parameters --> confidence in seed values
-    gam_scale_nu = []
-    gam_shape_nu = 100
     
     optimise_alpha0_diagonals = False # simplify optimisation by using diagonal alpha0 only
 # Initialisation ---------------------------------------------------------------------------------------------------
-    def __init__(self, nclasses=2, nscores=2, alpha0=None, nu0=None, K=1, uselowerbound=False, dh=None):
+    def __init__(self, nclasses=2, nscores=2, alpha0=None, nu0=None, K=1, uselowerbound=False, dh=None, 
+                 datamodelclass=ClassProportions, workermodelclass=ConfusionMatrix):
         if dh != None:
             self.nclasses = dh.nclasses
             self.nscores = len(dh.scores)
@@ -88,17 +222,8 @@ class IBCC(object):
             self.K = K
             self.uselowerbound = uselowerbound
             
-        # Ensure we have float arrays so we can do division with these parameters properly
-        self.nu0 = np.array(self.nu0).astype(float)
-        if self.nu0.ndim==1:
-            self.nu0 = self.nu0.reshape((self.nclasses,1))
-        elif self.nu0.shape[0]!=self.nclasses and self.nu0.shape[1]==self.nclasses:
-            self.nu0 = self.nu0.T
-            
-        if len(self.alpha0.shape) == 3:
-            self.alpha0_length = self.alpha0.shape[2]
-        else:
-            self.alpha0_length = 1
+        self.datamodel = datamodelclass(self.nclasses, self.nu0)
+        self.workermodel = workermodelclass(self.nclasses, self.nscores, self.alpha0)
         
     def init_params(self, force_reset=False):
         '''
@@ -107,47 +232,10 @@ class IBCC(object):
         if self.verbose:
             logging.debug('Initialising parameters...Alpha0: ' + str(self.alpha0))
         #if alpha is already initialised, and no new agents, skip this
-        if self.alpha == [] or self.alpha.shape[2] != self.K or force_reset:
-            self.init_lnPi()
-        if self.verbose:
-            logging.debug('Nu0: ' + str(self.nu0))
-        if self.nu ==[] or force_reset:
-            self.init_lnkappa()
-
-    def init_lnkappa(self):
-        self.nu = deepcopy(np.float64(self.nu0))
-        sumNu = np.sum(self.nu)
-        self.lnkappa = psi(self.nu) - psi(sumNu)
-
-    def init_lnPi(self):
-        '''
-        Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
-        either the prior, or where available, values of self.E_t from previous runs.
-        '''
-        self.alpha0 = self.alpha0.astype(float)
-        # if we specify different alpha0 for some agents, we need to do so for all K agents. The last agent passed in 
-        # will be duplicated for any missing agents.
-        if np.any(self.clusteridxs_alpha0): # map from diags list of cluster IDs
-            if not np.any(self.alpha0_cluster):
-                self.alpha0_cluster = self.alpha0
-                self.alpha0_length = self.alpha0_cluster.shape[2]
-            self.alpha0 = self.alpha0_cluster[:, :, self.clusteridxs_alpha0]        
-        else:
-            if len(self.alpha0.shape)==2:
-                self.alpha0  = self.alpha0[:,:,np.newaxis]
-            
-            if self.alpha0.shape[2] < self.K:
-                # We have a new dataset with more agents than before -- create more priors.
-                nnew = self.K - self.alpha0.shape[2]
-                alpha0new = self.alpha0[:, :, 0]
-                alpha0new = alpha0new[:, :, np.newaxis]
-                alpha0new = np.repeat(alpha0new, nnew, axis=2)
-                self.alpha0 = np.concatenate((self.alpha0, alpha0new), axis=2)
-        # Make sure self.alpha is the right size as well. Values of self.alpha not important as we recalculate below
-        self.alpha0 = self.alpha0[:, :, :self.K] # make this the right size if there are fewer classifiers than expected
-        self.alpha = np.zeros((self.nclasses, self.nscores, self.K), dtype=np.float) + self.alpha0
-        self.lnPi = np.zeros((self.nclasses, self.nscores, self.K))        
-        self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
+        if not self.workermodel.initialised or self.workermodel.K != self.K or force_reset:
+            self.workermodel.init_lnPi(self.K)
+        if not self.datamodel.initialised or force_reset:
+            self.datamodel.init_lnkappa()
 
     def init_t(self):
         kappa = (self.nu0 / np.sum(self.nu0, axis=0)).T
@@ -310,7 +398,7 @@ class IBCC(object):
         for l in range(self.nscores):
             self.Ctest[l] = C[l][self.testidxs, :]
         # Reset the pre-calculated data for the training set in case goldlabels has changed
-        self.alpha_tr = []
+        self.workermodel.reset_training_data()
         
     def resparsify_t(self):
         '''
@@ -318,7 +406,7 @@ class IBCC(object):
         indexes in the output array. Values are inserted for the unobserved indices using only kappa (class proportions).
         '''
         E_t_full = np.zeros((self.full_N, self.nclasses))
-        E_t_full[:] = (np.exp(self.lnkappa) / np.sum(np.exp(self.lnkappa),axis=0)).T
+        E_t_full[:] = (np.exp(self.datamodel.lnkappa) / np.sum(np.exp(self.datamodel.lnkappa),axis=0)).T
         E_t_full[self.observed_idxs,:] = self.E_t
         self.E_t_sparse = self.E_t  # save the sparse version
         self.E_t = E_t_full
@@ -339,7 +427,7 @@ class IBCC(object):
         self.preprocess_crowdlabels(crowdlabels)
         self.init_t()
         #Check that we have the right number of agents/base classifiers, K, and initialise parameters if necessary
-        if self.K != oldK or not np.any(self.nu) or not np.any(self.alpha):  # data shape has changed or not initialised yet
+        if self.K != oldK or not self.datamodel.initialised or not self.workermodel.intialised:  # data shape has changed or not initialised yet
             self.init_params()
         # Either run the model optimisation or just use the inference method with fixed hyper-parameters  
         if optimise_hyperparams==1 or optimise_hyperparams=='ML':
@@ -371,14 +459,14 @@ class IBCC(object):
         while not converged and self.keeprunning:
             oldET = self.E_t.copy()
             #update targets
-            self.expec_t()
+            self._expec_t()
             #update params
-            self.expec_lnkappa()
-            self.expec_lnPi()
+            self.datamodel.expec_lnkappa(self.E_t)
+            self.workermodel.expec_lnPi(self.E_t, self.trainidxs, self.testidxs, self.C, self.Ctest, self.Ntrain, self.Ntest)
             #check convergence every x iterations
             if np.mod(self.nIts, self.conv_check_freq) == self.conv_check_freq - 1:
                 if self.uselowerbound:
-                    L = self.lowerbound()
+                    L = self._lowerbound()
                     if self.verbose:
                         logging.debug('Lower bound: ' + str(L) + ', increased by ' + str(L - oldL))
                     self.change = (L - oldL) / np.abs(L)
@@ -398,47 +486,9 @@ class IBCC(object):
         logging.info('IBCC finished in %i iterations (max iterations allowed = %i).' % (self.nIts, self.max_iterations))
 
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
-    def train_alpha_counts(self, prior_pseudocounts=[]):
-        if not len(prior_pseudocounts):
-            prior_pseudocounts = self.alpha0
-        
-        # Save the counts from the training data so we only recalculate the test data on every iteration
-        if self.alpha_tr == []:
-            self.alpha_tr = np.zeros(self.alpha.shape)
-            if self.Ntrain:
-                for j in range(self.nclasses):
-                    for l in range(self.nscores):
-                        Tj = self.E_t[self.trainidxs, j].reshape((self.Ntrain, 1))
-                        self.alpha_tr[j,l,:] = self.C[l][self.trainidxs,:].T.dot(Tj).reshape(-1)
-            self.alpha_tr += prior_pseudocounts
-
-    def post_Alpha(self):  # Posterior Hyperparams
-        self.train_alpha_counts()
-        
-        # Add the counts from the test data
-        for j in range(self.nclasses):
-            for l in range(self.nscores):
-                Tj = self.E_t[self.testidxs, j].reshape((self.Ntest, 1))
-                counts = self.Ctest[l].T.dot(Tj).reshape(-1)
-                self.alpha[j, l, :] = self.alpha_tr[j, l, :] + counts
 
 # Expectations: methods for calculating expectations with respect to parameters for the VB algorithm ------------------
-    def expec_lnkappa(self):
-        sumET = np.sum(self.E_t, 0)
-        for j in range(self.nclasses):
-            self.nu[j] = self.nu0[j] + sumET[j]
-        self.lnkappa = psi(self.nu) - psi(np.sum(self.nu))
-
-    def expec_lnPi(self, posterior=True):
-        # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
-        if np.any(self.E_t) and posterior:
-            self.post_Alpha()
-        sumAlpha = np.sum(self.alpha, 1)
-        psiSumAlpha = psi(sumAlpha)
-        for s in range(self.nscores): 
-            self.lnPi[:, s, :] = psi(self.alpha[:, s, :]) - psiSumAlpha
-
-    def expec_t(self):
+    def _expec_t(self):
         self.lnjoint()
         joint = self.lnpCT
         joint = joint[self.testidxs, :]
@@ -460,55 +510,38 @@ class IBCC(object):
                 data = []
                 for l in range(self.nscores):
                     if self.table_format_flag:
-                        data_l = self.C[l] * self.lnPi[j, l, :][np.newaxis,:]
+                        data_l = self.C[l] * self.workermodel.lnPi[j, l, :][np.newaxis,:]
                     else:
-                        data_l = self.C[l].multiply(self.lnPi[j, l, :][np.newaxis,:])                        
+                        data_l = self.C[l].multiply(self.workermodel.lnPi[j, l, :][np.newaxis,:])
                     data = data_l if data==[] else data+data_l
-                self.lnpCT[:, j] = np.array(data.sum(axis=1)).reshape(-1) + self.lnkappa[j]
+                self.lnpCT[:, j] = np.array(data.sum(axis=1)).reshape(-1) + self.datamodel.lnkappa[j]
         else:  # no need to calculate in full
             for j in range(self.nclasses):
                 data = []
                 for l in range(self.nscores):
                     if self.table_format_flag:
-                        data_l = self.Ctest[l] * self.lnPi[j, l, :][np.newaxis,:]
+                        data_l = self.Ctest[l] * self.workermodel.lnPi[j, l, :][np.newaxis,:]
                     else:
-                        data_l = self.Ctest[l].multiply(self.lnPi[j, l, :][np.newaxis,:])
+                        data_l = self.Ctest[l].multiply(self.workermodel.lnPi[j, l, :][np.newaxis,:])
                     data = data_l if data==[] else data+data_l
-                self.lnpCT[self.testidxs, j] = np.array(data.sum(axis=1)).reshape(-1) + self.lnkappa[j]
-        
-    def post_lnkappa(self):
-        lnpKappa = gammaln(np.sum(self.nu0)) - np.sum(gammaln(self.nu0)) + sum((self.nu0 - 1) * self.lnkappa)
-        return lnpKappa
-        
-    def q_lnkappa(self):
-        lnqKappa = gammaln(np.sum(self.nu)) - np.sum(gammaln(self.nu)) + np.sum((self.nu - 1) * self.lnkappa)
-        return lnqKappa
+                self.lnpCT[self.testidxs, j] = np.array(data.sum(axis=1)).reshape(-1) + self.datamodel.lnkappa[j]
 
     def q_ln_t(self):
         ET = self.E_t[self.E_t != 0]
         return np.sum(ET * np.log(ET))         
 
-    def post_lnpi(self):
-        x = np.sum((self.alpha0-1) * self.lnPi,1)
-        z = gammaln(np.sum(self.alpha0,1)) - np.sum(gammaln(self.alpha0),1)
-        return np.sum(x+z)
-                    
-    def q_lnPi(self):
-        x = np.sum((self.alpha-1) * self.lnPi,1)
-        z = gammaln(np.sum(self.alpha,1)) - np.sum(gammaln(self.alpha),1)
-        return np.sum(x+z)
 # Lower Bound ---------------------------------------------------------------------------------------------------------       
-    def lowerbound(self):
+    def _lowerbound(self):
         # Expected Energy: entropy given the current parameter expectations
         lnpCT = self.post_lnjoint_ct()
-        lnpPi = self.post_lnpi()
-        lnpKappa = self.post_lnkappa()
+        lnpPi = self.workermodel.post_lnpi()
+        lnpKappa = self.datamodel.post_lnkappa()
         EEnergy = lnpCT + lnpPi + lnpKappa
         
         # Entropy of the variational distribution
         lnqT = self.q_ln_t()
-        lnqPi = self.q_lnPi()
-        lnqKappa = self.q_lnkappa()
+        lnqPi = self.workermodel.q_lnPi()
+        lnqKappa = self.datamodel.q_lnkappa()
         H = lnqT + lnqPi + lnqKappa
         
         # Lower Bound
@@ -522,7 +555,7 @@ class IBCC(object):
 # Hyperparameter Optimisation ------------------------------------------------------------------------------------------
     def set_hyperparams(self,hyperparams):
         n_alpha_elements = len(hyperparams) - self.nclasses
-        alpha_shape = (self.nclasses, self.nscores, self.alpha0_length)
+        alpha_shape = (self.nclasses, self.nscores, self.alpha0.shape[2])
         
         if self.optimise_alpha0_diagonals:
             alpha0 = np.zeros(alpha_shape) + hyperparams[1]
@@ -530,18 +563,14 @@ class IBCC(object):
         else:
             alpha0 = hyperparams[0:n_alpha_elements].reshape(alpha_shape)
         nu0 = np.array(hyperparams[-self.nclasses:]).reshape(self.nclasses, 1)
-        if self.clusteridxs_alpha0 != []:
-            self.alpha0_cluster = alpha0
-        else:
-            self.alpha0 = alpha0  
+        self.alpha0 = alpha0  
         self.nu0 = nu0
         return alpha0, nu0
 
     def get_hyperparams(self):
-        if self.clusteridxs_alpha0 != []:
-            alpha0 = self.alpha0_cluster
-        elif self.optimise_alpha0_diagonals:
-            alpha0 = [np.mean(np.diag(alpha0)), np.sum(alpha0)-np.sum(np.diag(alpha0)) / (self.alpha0.shape[0]**2 - self.alpha0.shape[0])]           
+        if self.optimise_alpha0_diagonals:
+            alpha0 = [np.mean(np.diag(self.alpha0)), np.sum(self.alpha0)-np.sum(np.diag(self.alpha0)) / 
+                      (self.alpha0.shape[0]**2 - self.alpha0.shape[0])]           
         else:
             alpha0 = self.alpha0
 
@@ -592,7 +621,7 @@ class IBCC(object):
         self.run_inference() 
         
         #calculate likelihood from the fitted model
-        data_loglikelihood = self.lowerbound()
+        data_loglikelihood = self._lowerbound()
         lml = data_loglikelihood 
         
         if use_MAP:
@@ -648,8 +677,8 @@ def load_and_run_ibcc(configFile, ibcc_class=None, optimise_hyperparams=False):
     if dh.output_file is not None:
         dh.save_targets(pT)
 
-    dh.save_pi(combiner.alpha, combiner.nclasses, combiner.nscores)
-    dh.save_hyperparams(combiner.alpha, combiner.nu)
+    dh.save_pi(combiner.workermodel.alpha, combiner.nclasses, combiner.nscores)
+    dh.save_hyperparams(combiner.workermodel.alpha, combiner.datamodel.nu)
     pT = dh.map_predictions_to_original_IDs(pT)
     return pT, combiner
     

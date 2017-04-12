@@ -117,8 +117,8 @@ class CBCC(ibcc.IBCC):
         self.Elogp_clusters = np.array((logp_current_vs_subsequent_clusters, logp_subsequent_vs_current))
         self.logw = logp_current_vs_subsequent_clusters + logp_current_or_subsequent
 
-    def expec_t(self):
-        super(CBCC, self).expec_t()
+    def _expec_t(self):
+        super(CBCC, self)._expec_t()
 
     def expec_responsibilities(self):
         # for each cluster value, compute the log likelihoods of the data. This will be a sum  
@@ -152,7 +152,7 @@ class CBCC(ibcc.IBCC):
         self.lnr = log_resp
         self.r = np.exp(self.lnr)
 
-    def train_alpha_counts(self):
+    def _train_alpha_counts(self):
         # Save the counts from the training data so we only recalculate the test data on every iteration
         if not len(self.alpha_tr):
             self.alpha_tr = np.zeros(self.alpha.shape)
@@ -170,8 +170,8 @@ class CBCC(ibcc.IBCC):
                             
             self.alpha_tr += self.alpha0
             
-    def post_Alpha(self):  # Posterior Hyperparams
-        self.train_alpha_counts()
+    def _post_Alpha(self):  # Posterior Hyperparams
+        self._train_alpha_counts()
         
         # Add the counts from the test data
         for j in range(self.nclasses):
@@ -191,7 +191,7 @@ class CBCC(ibcc.IBCC):
         
         # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
         if np.any(self.E_t) and posterior:
-            self.post_Alpha()
+            self._post_Alpha()
         sumAlpha = np.sum(self.alpha, 1)
         psiSumAlpha = psi(sumAlpha)
         for j in range(self.nclasses):
@@ -320,15 +320,15 @@ class HCBCC(CBCC):
         self.lnr = log_resp
         self.r = np.exp(self.lnr)
 
-    def train_alpha_counts(self):
+    def _train_alpha_counts(self):
         prior_pseudocounts = np.zeros(self.alpha.shape)
         for j in range(self.nclasses):
             prior_pseudocounts[j, :, :] = (self.eta[j, :, :] * self.beta[j, :, :]).dot(self.r.T)
-        ibcc.IBCC.train_alpha_counts(self, prior_pseudocounts)
+        ibcc.IBCC._train_alpha_counts(self, prior_pseudocounts)
 
-    def post_Alpha(self):  # Posterior Hyperparams
+    def _post_Alpha(self):  # Posterior Hyperparams
         self.alpha_tr = [] # reset this so we update with new eta and beta
-        ibcc.IBCC.post_Alpha(self)
+        ibcc.IBCC._post_Alpha(self)
         
     def expec_lnPi(self, posterior=True):
         self.expec_responsibilities()
@@ -336,7 +336,7 @@ class HCBCC(CBCC):
         
         # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
         if np.any(self.E_t) and posterior:
-            self.post_Alpha()
+            self._post_Alpha()
         sumAlpha = np.sum(self.alpha, 1)
         psiSumAlpha = psi(sumAlpha)
         for j in range(self.nclasses):

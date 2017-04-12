@@ -59,7 +59,7 @@ class GaussianIBCC(IBCC):
             lnjoint[:, j] = np.nansum((lnPrec - self.ln(2 * np.pi) - mu_deviation) / 2, axis=1) + self.lnkappa[j]
         return lnjoint
 
-    def lowerbound(self, lnjoint):
+    def _lowerbound(self, lnjoint):
         #probability of these targets is 1 as they are training labels
         lnpCT = self.post_lnjoint_ct(lnjoint)                    
         lnpPi = np.sum(norm.pdf(self.mu, loc=self.m0, scale=1 / (self.lamb0 * self.prec)) \
