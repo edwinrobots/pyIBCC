@@ -7,7 +7,7 @@ from copy import deepcopy
 from scipy.sparse import coo_matrix, csr_matrix
 from scipy.special import psi, gammaln
 from ibccdata import DataHandler
-from scipy.optimize import fmin, fmin_cobyla
+from scipy.optimize import fmin
 from scipy.stats import gamma
 
 class IBCC(object):
@@ -338,15 +338,17 @@ class IBCC(object):
         self.set_test_and_train_idxs(testidxs)
         self.preprocess_crowdlabels(crowdlabels)
         self.init_t()
-        #Check that we have the right number of agents/base classifiers, K, and initialise parameters if necessary
-        if self.K != oldK or not np.any(self.nu) or not np.any(self.alpha):  # data shape has changed or not initialised yet
-            self.init_params()
+
         # Either run the model optimisation or just use the inference method with fixed hyper-parameters  
         if optimise_hyperparams==1 or optimise_hyperparams=='ML':
             self.optimize_hyperparams(maxiter=maxiter)
         elif optimise_hyperparams==2 or optimise_hyperparams=='MAP':
             self.optimize_hyperparams(maxiter=maxiter, use_MAP=True)
         else:
+            #Check that we have the right number of agents/base classifiers, K, and initialise parameters if necessary
+            if self.K != oldK or not np.any(self.nu) or not np.any(self.alpha):  # data shape has changed or not initialised yet
+                self.init_params()            
+            
             self.run_inference() 
         if self.sparse:
             self.resparsify_t()
