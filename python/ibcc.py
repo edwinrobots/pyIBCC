@@ -245,7 +245,7 @@ class IBCC(object):
         self.trainidxs = self.goldlabels > -1
         self.Ntrain = np.sum(self.trainidxs)
         # self.testidxs only includes points with crowd labels!
-        if testidxs != None:  # include the pre-specified set of unlabelled data points in the inference process. All
+        if testidxs is not None:  # include the pre-specified set of unlabelled data points in the inference process. All
             # other data points are either training data or ignored.
             if self.full_N < len(testidxs): 
                 self.full_N = len(testidxs)
