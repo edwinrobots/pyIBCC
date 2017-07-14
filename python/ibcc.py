@@ -171,7 +171,7 @@ class IBCC(object):
             row = np.zeros((1, self.nclasses))
             row[0, j] = 1
             jidxs = self.goldlabels == j
-            uncert_trainidxs = uncert_trainidxs - jidxs
+            uncert_trainidxs = uncert_trainidxs ^ jidxs
             self.E_t[jidxs, :] = row
         # deal with uncertain training idxs
         for j in range(self.nclasses):
