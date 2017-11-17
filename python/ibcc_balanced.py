@@ -9,21 +9,21 @@ from scipy.stats import gamma
 
 class BalancedIBCC(IBCC):
 
-    def init_lnkappa(self):
+    def _init_lnkappa(self):
         self.nu = np.ones(self.nclasses) * 1000000 # use some default value that gives equal proportions
         proportion = np.log(1.0 / float(self.nclasses))
         self.lnkappa = np.ones(self.nclasses) * proportion
 # Expectations: methods for calculating expectations with respect to parameters for the VB algorithm ---------------
-    def expec_lnkappa(self):
+    def _expec_lnkappa(self):
         self.nu = np.ones(self.nclasses) * 1000000 
         proportion = np.log(1.0 / float(self.nclasses))
         self.lnkappa = np.ones(self.nclasses) * proportion
 
-    def post_lnkappa(self):
+    def _post_lnkappa(self):
         lnpKappa = 0
         return lnpKappa
         
-    def q_lnkappa(self):
+    def _q_lnkappa(self):
         lnqKappa = 0
         return lnqKappa
 

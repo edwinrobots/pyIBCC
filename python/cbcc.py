@@ -50,12 +50,12 @@ class CBCC(ibcc.IBCC):
         self.r = 1.0 / self.nclusters + np.zeros((self.K, self.nclusters))
         self.logr = np.log(self.r)        
         
-    def init_t(self):
+    def _init_t(self):
         self.init_responsibilities()
         self.init_weights()
-        super(CBCC, self).init_t()
+        super(CBCC, self)._init_t()
         
-    def init_lnPi(self):
+    def _init_lnPi(self):
         '''
         Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
         either the prior, or where available, values of self.E_t from previous runs.
@@ -84,7 +84,7 @@ class CBCC(ibcc.IBCC):
         self.alpha0 = self.alpha0[:, :, :self.nclusters] # make this the right size if there are fewer classifiers than expected
         self.alpha = np.zeros((self.nclasses, self.nscores, self.nclusters), dtype=np.float) + self.alpha0
         self.lnPi = np.zeros((self.nclasses, self.nscores, self.K)) 
-        self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
+        self._expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
 
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
 
@@ -117,8 +117,8 @@ class CBCC(ibcc.IBCC):
         self.Elogp_clusters = np.array((logp_current_vs_subsequent_clusters, logp_subsequent_vs_current))
         self.logw = logp_current_vs_subsequent_clusters + logp_current_or_subsequent
 
-    def expec_t(self):
-        super(CBCC, self).expec_t()
+    def _expec_t(self):
+        super(CBCC, self)._expec_t()
 
     def expec_responsibilities(self):
         # for each cluster value, compute the log likelihoods of the data. This will be a sum  
@@ -152,7 +152,7 @@ class CBCC(ibcc.IBCC):
         self.lnr = log_resp
         self.r = np.exp(self.lnr)
 
-    def train_alpha_counts(self):
+    def _train_alpha_counts(self):
         # Save the counts from the training data so we only recalculate the test data on every iteration
         if not len(self.alpha_tr):
             self.alpha_tr = np.zeros(self.alpha.shape)
@@ -170,8 +170,8 @@ class CBCC(ibcc.IBCC):
                             
             self.alpha_tr += self.alpha0
             
-    def post_Alpha(self):  # Posterior Hyperparams
-        self.train_alpha_counts()
+    def _post_Alpha(self):  # Posterior Hyperparams
+        self._train_alpha_counts()
         
         # Add the counts from the test data
         for j in range(self.nclasses):
@@ -185,13 +185,13 @@ class CBCC(ibcc.IBCC):
                         
                     self.alpha[j, l, cl] = self.alpha_tr[j, l, cl] + np.sum(counts)
 
-    def expec_lnPi(self, posterior=True):
+    def _expec_lnPi(self, posterior=True):
         self.expec_responsibilities()
         self.expec_weights()
         
         # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
         if np.any(self.E_t) and posterior:
-            self.post_Alpha()
+            self._post_Alpha()
         sumAlpha = np.sum(self.alpha, 1)
         psiSumAlpha = psi(sumAlpha)
         for j in range(self.nclasses):
@@ -199,7 +199,7 @@ class CBCC(ibcc.IBCC):
                 self.lnPi[:, s, :] = (psi(self.alpha[:, s, :]) - psiSumAlpha)[np.newaxis, :].dot(self.r.T)
  
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
-    def post_lnpi(self):
+    def _post_lnpi(self):
         x = np.sum((self.alpha0-1) * self.cluster_lnPi,1)
         z = gammaln(np.sum(self.alpha0,1)) - np.sum(gammaln(self.alpha0),1)
         
@@ -213,7 +213,7 @@ class CBCC(ibcc.IBCC):
         
         return np.sum(x+z) + w_x + w_z + logp_membership
                     
-    def q_lnPi(self):
+    def _q_lnPi(self):
         x = np.sum((self.alpha-1) * self.cluster_lnPi,1)
         z = gammaln(np.sum(self.alpha,1)) - np.sum(gammaln(self.alpha),1)
 
@@ -264,7 +264,7 @@ class HCBCC(CBCC):
         self.r = 1.0 / self.nclusters + np.zeros((self.K, self.nclusters))
         self.logr = np.log(self.r)     
         
-    def init_lnPi(self):
+    def _init_lnPi(self):
         '''
         Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
         either the prior, or where available, values of self.E_t from previous runs.
@@ -294,13 +294,13 @@ class HCBCC(CBCC):
         self.alpha = self.alpha_tr.copy()
         self.lnPi = np.zeros((self.nclasses, self.nscores, self.K)) + \
                         np.log(self.alpha_tr / np.sum(self.alpha_tr, axis=1)[:, np.newaxis, :])
-        self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
+        self._expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
 
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
     def expec_responsibilities(self):
         # Use the dirichlet likelihood for cluster rather than the categorical likelihood.         
         # For each cluster value, compute the log likelihoods of the data. 
-        # This will be a sum of log Dirichlet PDFs given by q_lnPi   
+        # This will be a sum of log Dirichlet PDFs given by _q_lnPi   
         # summed over all classes
         # to get logp( pi^k | cluster_k = cluster)        
         loglikelihoods = np.zeros((self.K, self.nclusters))
@@ -320,23 +320,23 @@ class HCBCC(CBCC):
         self.lnr = log_resp
         self.r = np.exp(self.lnr)
 
-    def train_alpha_counts(self):
+    def _train_alpha_counts(self):
         prior_pseudocounts = np.zeros(self.alpha.shape)
         for j in range(self.nclasses):
             prior_pseudocounts[j, :, :] = (self.eta[j, :, :] * self.beta[j, :, :]).dot(self.r.T)
-        ibcc.IBCC.train_alpha_counts(self, prior_pseudocounts)
+        ibcc.IBCC._train_alpha_counts(self, prior_pseudocounts)
 
-    def post_Alpha(self):  # Posterior Hyperparams
+    def _post_Alpha(self):  # Posterior Hyperparams
         self.alpha_tr = [] # reset this so we update with new eta and beta
-        ibcc.IBCC.post_Alpha(self)
+        ibcc.IBCC._post_Alpha(self)
         
-    def expec_lnPi(self, posterior=True):
+    def _expec_lnPi(self, posterior=True):
         self.expec_responsibilities()
         self.expec_weights()
         
         # check if E_t has been initialised. Only update alpha if it has. Otherwise E[lnPi] is given by the prior
         if np.any(self.E_t) and posterior:
-            self.post_Alpha()
+            self._post_Alpha()
         sumAlpha = np.sum(self.alpha, 1)
         psiSumAlpha = psi(sumAlpha)
         for j in range(self.nclasses):
@@ -379,7 +379,7 @@ class HCBCC(CBCC):
         self.beta = self.a / self.b 
         
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
-    def post_lnpi(self):
+    def _post_lnpi(self):
         x_eta = np.sum((self.phi0*self.gamma0 - 1) * self.eta, 1)
         z_eta = (gammaln(np.sum(self.phi0*self.gamma0, 1)) - np.sum(gammaln(self.phi0*self.gamma0), 1))[:, np.newaxis]
         
@@ -399,7 +399,7 @@ class HCBCC(CBCC):
         
         return np.sum(x_eta + z_eta) + np.sum(lnp_beta) + w_x + w_z + logp_membership + np.sum(x + z)
                     
-    def q_lnPi(self):
+    def _q_lnPi(self):
         x_eta = np.sum((self.phigamma - 1) * self.eta, 1)
         z_eta = (gammaln(np.sum(self.phigamma, 1)) - np.sum(gammaln(self.phigamma), 1))[:, np.newaxis]
         

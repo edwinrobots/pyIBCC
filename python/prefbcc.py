@@ -24,7 +24,7 @@ class PrefBCC(IBCC):
         nscores = 3
         super(PrefBCC, self).__init__(nclasses, nscores, alpha0, nu0, K)     
 
-    def init_lnPi(self):
+    def _init_lnPi(self):
         '''
         Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
         either the prior, or where available, values of self.E_t from previous runs.
@@ -35,11 +35,11 @@ class PrefBCC(IBCC):
         
         self.alpha = np.zeros((self.nclasses**2, self.nscores, self.K), dtype=np.float) + self.alpha0
         self.lnPi = np.zeros((self.nclasses**2, self.nscores, self.K))
-        self.expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
+        self._expec_lnPi(posterior=False) # calculate alpha from the initial/prior values only in the first iteration
     
 # Data preprocessing and helper functions --------------------------------------------------------------------------
    
-    def preprocess_crowdlabels(self, crowdlabels):
+    def _preprocess_crowdlabels(self, crowdlabels):
         # Initialise all objects relating to the crowd labels.
         C = {}
         crowdlabels[np.isnan(crowdlabels)] = -1
@@ -75,7 +75,7 @@ class PrefBCC(IBCC):
         self.alpha_tr = []
         
 # Posterior Updates to Hyperparameters --------------------------------------------------------------------------------
-    def post_Alpha(self):  # Posterior Hyperparams           
+    def _post_Alpha(self):  # Posterior Hyperparams           
         # Add the counts from the test data
         for j in range(self.nclasses):
             Tj = self.E_t[:, j].reshape((self.Ntest, 1))
@@ -90,7 +90,7 @@ class PrefBCC(IBCC):
                     self.alpha[rowidx, l, :] = self.C[l].T.dot(Tpair).reshape(-1)                
                 
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
-    def lnjoint(self, alldata=False):
+    def _lnjoint(self, alldata=False):
         '''
         For use with crowdsourced data in table format (should be converted on input)
         '''

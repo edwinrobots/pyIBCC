@@ -24,7 +24,7 @@ class DynIBCC(ibcc.IBCC):
     tauidxs_test = [] # the time-step indexes of the test data points
     alpha0_tau = [] # the hyper-parameters copied out for each time-step. alpha0 has only one matrix for each agent. 
 # Initialisation ---------------------------------------------------------------------------------------------------
-    def init_lnPi(self):
+    def _init_lnPi(self):
         '''
         Always creates new self.alpha and self.lnPi objects and calculates self.alpha and self.lnPi values according to 
         either the prior, or where available, values of self.E_t from previous runs.
@@ -44,9 +44,9 @@ class DynIBCC(ibcc.IBCC):
         # Make sure self.alpha is the right size as well. Values of self.alpha not important as we recalculate below
         self.alpha = np.zeros((self.nclasses, self.nscores, self.Tau), dtype=np.float)
         self.lnPi = np.zeros((self.nclasses, self.nscores, self.Tau))        
-        self.expec_lnPi()        
+        self._expec_lnPi()        
         
-    def init_params(self, force_reset=False):
+    def _init_params(self, force_reset=False):
         '''
         Checks that parameters are intialized, but doesn't overwrite them if already set up.
         '''
@@ -63,13 +63,13 @@ class DynIBCC(ibcc.IBCC):
             self.Cknown += self.C[l]
         #if alpha is already initialised, and no new agents, skip this
         if self.alpha == [] or self.alpha.shape[2] != self.Tau or force_reset:
-            self.init_lnPi()
+            self._init_lnPi()
         if self.verbose:
             logging.debug('Nu0: ' + str(self.nu0))
         if self.nu ==[] or force_reset:
-            self.init_lnkappa()
+            self._init_lnkappa()
 
-    def preprocess_crowdlabels(self, crowdlabels):
+    def _preprocess_crowdlabels(self, crowdlabels):
         # Initialise all objects relating to the crowd labels.
         self.C = {}
         self.Ctest = {}
@@ -128,7 +128,7 @@ class DynIBCC(ibcc.IBCC):
         self.alpha_tr = []
 
 # Posterior Updates to Hyper-parameters -----------------------------------------------------------------------------
-    def post_Alpha(self):#Posterior update to hyper-parameters 
+    def _post_Alpha(self):#Posterior update to hyper-parameters 
         if self.nclasses>2:
             for l in range(self.nscores):
                 self.post_Alpha_binary(l)
@@ -318,7 +318,7 @@ class DynIBCC(ibcc.IBCC):
                 self.alpha[:, 1 - l, tauIdx] = alphasum - self.alpha[:, l, tauIdx]
                 
 # Likelihoods of observations and current estimates of parameters --------------------------------------------------
-    def lnjoint(self, alldata=False):
+    def _lnjoint(self, alldata=False):
         '''
         For use with crowdsourced data in table format (should be converted on input)
         '''
@@ -347,7 +347,7 @@ class DynIBCC(ibcc.IBCC):
                 self.lnpCT[self.testidxs, j] = np.sum(data, 1) + self.lnkappa[j]
 
 
-    def post_lnpi(self):
+    def _post_lnpi(self):
         if self.alpha0_tau==[]:
             if self.table_format_flag:
                 self.alpha0_tau = np.tile(self.alpha0, (1,1,self.N))

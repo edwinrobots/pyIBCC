@@ -34,7 +34,7 @@ class GaussianIBCC(IBCC):
     # number of Gaussian-modelled agents
     Kgauss = 1
 
-    def expec_lnPi(self): # update the likelihood parameters      
+    def _expec_lnPi(self): # update the likelihood parameters      
         Nj = np.zeros((self.nclasses, self.Kgaus))
         xbarjk = np.zeros((self.nclasses, self.Kgaus))
         Sjk = np.zeros((self.nclasses, self.Kgaus))
@@ -50,33 +50,33 @@ class GaussianIBCC(IBCC):
         self.mu = self.m
         self.prec = self.gam_alpha / self.gam_beta
         
-    def lnjoint(self):
-        lnjoint = np.zeros((self.N, self.nclasses))
+    def _lnjoint(self):
+        _lnjoint = np.zeros((self.N, self.nclasses))
         for j in range(self.nclasses):
             # square difference from mean, normalised by precision
             mu_deviation = self.gam_alpha[j, :] * self.gam_beta[j, :] * (self.Cgauss - self.m) ** 2 + 1.0 / self.lamb[j, :]
             lnPrec = psi(self.gam_alpha[j, :]) - np.log(self.gam_beta[j, :])
-            lnjoint[:, j] = np.nansum((lnPrec - self.ln(2 * np.pi) - mu_deviation) / 2, axis=1) + self.lnkappa[j]
-        return lnjoint
+            _lnjoint[:, j] = np.nansum((lnPrec - self.ln(2 * np.pi) - mu_deviation) / 2, axis=1) + self.lnkappa[j]
+        return _lnjoint
 
-    def lowerbound(self, lnjoint):
+    def lowerbound(self, _lnjoint):
         #probability of these targets is 1 as they are training labels
-        lnpCT = self.post_lnjoint_ct(lnjoint)                    
+        lnpCT = self._post_lnjoint_ct(_lnjoint)                    
         lnpPi = np.sum(norm.pdf(self.mu, loc=self.m0, scale=1 / (self.lamb0 * self.prec)) \
                                                     *  gamma.pdf(self.prec, shape=self.gam_alpha0, scale=1 / self.gam_beta0))
-        lnpKappa = self.post_lnkappa()
+        lnpKappa = self._post_lnkappa()
         EEnergy = lnpCT + lnpPi + lnpKappa
         
-        lnqT = self.q_ln_t()
+        lnqT = self._q_ln_t()
         lnqPi = np.sum(norm.pdf(self.mu, loc=self.m, scale=1 / (self.lamb * self.prec)) \
                                                     *  gamma.pdf(self.prec, shape=self.gam_alpha, scale=1 / self.gam_beta))
-        lnqKappa = self.q_lnkappa()
+        lnqKappa = self._q_lnkappa()
         H = - lnqT - lnqPi - lnqKappa
         L = EEnergy + H
         #logging.debug('EEnergy ' + str(EEnergy) + ', H ' + str(H))
         return L
         
-    def preprocess_crowdlabels(self):
+    def _preprocess_crowdlabels(self):
         # ensure we don't have a matrix by mistake
         if not isinstance(self.crowdlabels, np.ndarray):
             self.crowdlabels = np.array(self.crowdlabels)
@@ -107,9 +107,9 @@ class GaussianIBCC(IBCC):
                     self.agent_gauss_indicator = np.concatenate((self.agent_gauss_indicator, np.ones(newindices)))
             else:
                 self.Kgauss = newK
-            self.init_params()
+            self._init_params()
 
-    def init_lnPi(self):
+    def _init_lnPi(self):
         if self.gam_alpha != [] and self.gam_alpha.shape[1] == self.Kgauss:
             return  # already set up
         if len(self.lamb0.shape) < 2:
