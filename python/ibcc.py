@@ -734,4 +734,5 @@ if __name__ == '__main__':
         configFile = sys.argv[1]
     else:
         configFile = './config/my_project.py'
+    print(configFile)
     load_and_run_ibcc(configFile)
