@@ -107,7 +107,7 @@ class Evaluator(object):
                         
             diffs = tpr-FPR
             best = np.argmax(diffs)
-            print  'The best threshold is %.3f at diff of %.3f, with TPR=%.3f and FPR=%.3f' % (thresholds[best], np.max(diffs), tpr[best], FPR[best])
+            print('The best threshold is %.3f at diff of %.3f, with TPR=%.3f and FPR=%.3f' % (thresholds[best], np.max(diffs), tpr[best], FPR[best]))
             best_thresholds[j] = thresholds[best]
                         
         if self.nclasses==2:
@@ -151,11 +151,11 @@ class Evaluator(object):
         
         labels = self.dh.goldlabels[self.testIdxs].reshape(-1)
                         
-        print 'Evaluating the results using the greedy classifications.'
+        print('Evaluating the results using the greedy classifications.')
         greedyresults = np.argmax(self.pT[self.testIdxs,:])#np.round(pT_test_pos)
         
         acc = 1 - np.sum(labels!=greedyresults, 0) / len(self.testIdxs)
-        print 'acc: ' + str(acc)
+        print('acc: ' + str(acc))
         #each class column will be the same. Related to a weighted average of precision across all classes
         
         disagreement = labels!=greedyresults
@@ -167,13 +167,13 @@ class Evaluator(object):
         tn = np.sum(agreement[labels==0],0)[0]
             
         if tp+fn==0:
-            print "recall unknown"
+            print("recall unknown")
             recall = 0
         else:
             recall = tp / (tp+fn)
             
         if fp+tn==0:
-            print "specificity unknown"
+            print("specificity unknown")
             spec = 0
         else:
             spec = tn/(fp+tn)
@@ -187,9 +187,9 @@ class Evaluator(object):
         nfiltered = tp + fp
         filter_rate = nfiltered/(nfiltered+tn+fn)
             
-        print 'Evaluating the results using curves with classification thresholds.'
+        print('Evaluating the results using curves with classification thresholds.')
         if fp+tn==0 or tp+fn==0:
-            print 'Incomplete test labels, cannot evaluate AUC'
+            print('Incomplete test labels, cannot evaluate AUC')
             auc = np.zeros(self.nclasses-1)
             ap = np.zeros(self.nclasses-1)
         else:
@@ -208,7 +208,7 @@ class Evaluator(object):
         
         for j in range(1,self.nclasses):
             X = np.sort(self.pT[self.testIdxs,j]).reshape(-1)
-            Y = - np.array(range(len(X))) + len(X) 
+            Y = - np.array(list(range(len(X)))) + len(X) 
             plt.figure(self.figure1)
             plt.plot(X,Y, label=self.algolabel)
             plt.legend() # loc='lower center'
@@ -223,7 +223,7 @@ class Evaluator(object):
             testIdxs_j = self.testIdxs[gold_test==j]
             
             X = np.sort(self.pT[testIdxs_j,j]).reshape(-1)
-            Y = - np.array(range(len(X))) + len(X) 
+            Y = - np.array(list(range(len(X)))) + len(X) 
             plt.figure(self.figure2)
             plt.plot(X,Y, label=self.algolabel)
             plt.legend()
@@ -236,7 +236,7 @@ class Evaluator(object):
             self.write_img("cumdist_" + str(j) + "_" + self.datalabel, self.figure2)
     
             X = np.sort(self.pT[testIdxs_j,j]).reshape(-1)
-            Y = (- np.array( range(len(X)) ) + float(len(X)) )
+            Y = (- np.array( list(range(len(X))) ) + float(len(X)) )
             Y = np.float32(Y)/float(len(X))
             plt.figure(self.figure3)
             plt.plot(X,Y, label=self.algolabel)
@@ -251,17 +251,17 @@ class Evaluator(object):
             
     def print_results(self, meanAcc,meanRecall,meanSpecificity,meanPrecision,meanAuc,meanAp,nfiltered,filter_rate):
         if self.nclasses > 1:
-            print '---For each class separately---'
+            print('---For each class separately---')
             
-            print 'Recall: ' + str(meanRecall)
-            print 'Specificity: ' + str(meanSpecificity)
-            print 'Precision: ' + str(meanPrecision)
-            print 'AUC: ' + str(meanAuc)
-            print 'AP: ' + str(meanAp)
-            print "No. data points marked positive: " + str(nfiltered)
-            print "Fraction marked as positive: " + str(filter_rate)
+            print('Recall: ' + str(meanRecall))
+            print('Specificity: ' + str(meanSpecificity))
+            print('Precision: ' + str(meanPrecision))
+            print('AUC: ' + str(meanAuc))
+            print('AP: ' + str(meanAp))
+            print("No. data points marked positive: " + str(nfiltered))
+            print("Fraction marked as positive: " + str(filter_rate))
         
-            print '--- Means across all classes ---'
+            print('--- Means across all classes ---')
         
         #unweighted average across classes
         meanAuc = np.sum(meanAuc)/self.nclasses
@@ -270,14 +270,14 @@ class Evaluator(object):
         meanSpecificity = np.sum(meanSpecificity)/self.nclasses
         meanPrecision = np.sum(meanPrecision)/self.nclasses  
         
-        print 'Mean Accuracy: ' + str(meanAcc)
-        print 'Mean Recall: ' + str(meanRecall)
-        print 'Mean Specificity: ' + str(meanSpecificity)
-        print 'Mean Precision: ' + str(meanPrecision)
-        print 'Mean AUC: ' + str(meanAuc)
-        print 'Mean AP: ' + str(meanAp)
-        print "Mean no. data points marked positive: " + str(nfiltered)
-        print "Mean fraction marked as positive: " + str(filter_rate)
+        print('Mean Accuracy: ' + str(meanAcc))
+        print('Mean Recall: ' + str(meanRecall))
+        print('Mean Specificity: ' + str(meanSpecificity))
+        print('Mean Precision: ' + str(meanPrecision))
+        print('Mean AUC: ' + str(meanAuc))
+        print('Mean AP: ' + str(meanAp))
+        print("Mean no. data points marked positive: " + str(nfiltered))
+        print("Mean fraction marked as positive: " + str(filter_rate))
         
     def plot_recall_by_type(self, seqno):
     
@@ -316,7 +316,7 @@ class Evaluator(object):
             
             totalNs[i] = tp+fn
             
-            print "Recall for type " + str(t) + " is " + str(recall[i])
+            print("Recall for type " + str(t) + " is " + str(recall[i]))
             cumRecall[i] = np.sum(np.multiply(recall[0:i+1], totalNs[0:i+1]))/np.sum(totalNs[0:i+1])
             #print "Cum Recall for type " + str(t) + " is " + str(cumRecall[i])
                     
@@ -403,13 +403,13 @@ class Evaluator(object):
                 
             nThisType = float(len(hits[thisType]))
             nWithPos = np.sum(hits[thisType]>0) 
-            print nWithPos
-            print nThisType
-            print nWithPos/nThisType    
+            print(nWithPos)
+            print(nThisType)
+            print(nWithPos/nThisType)    
             majorities = np.divide(hits[thisType], seenBy[thisType])>0.5
             nMajorities = np.sum(majorities)
-            print nMajorities  
-            print nMajorities / nThisType
+            print(nMajorities)  
+            print(nMajorities / nThisType)
             if i==5:
                 bigPlanetIds = idxs[greedyLabels==0]
                  
@@ -422,7 +422,7 @@ class Evaluator(object):
             self.testIdxs = np.argwhere(np.bitwise_and(self.dh.goldlabels>-1,self.gold_tr==-1))
             self.testIdxs = self.testIdxs.reshape(-1)
      
-        print ' No. test indexes = ' + str(len(self.testIdxs)) + ", with +ve examples " + str(len(np.argwhere(self.dh.goldlabels[self.testIdxs]>0)))
+        print(' No. test indexes = ' + str(len(self.testIdxs)) + ", with +ve examples " + str(len(np.argwhere(self.dh.goldlabels[self.testIdxs]>0))))
      
         self.pT = self.combiner.combine_classifications(self.dh.crowdlabels, self.gold_tr)
         self.dh.save_hyperparams(self.combiner.alpha, self.combiner.nu, self.combiner.noptiter)
