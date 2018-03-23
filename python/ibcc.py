@@ -463,7 +463,7 @@ class IBCC(object):
                     self.change = self._convergence_measure(oldET)
                 if self._convergence_check():
                     converged = True            
-                elif self.verbose:
+                else:#if self.verbose:
                     logging.debug('IBCC iteration %i absolute change was %s' % (self.nIts, self.change))
                     
             self.nIts+=1
