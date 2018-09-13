@@ -33,12 +33,12 @@ def load_zoo_data(zoodatafile):
         if not user or np.isnan(user):
             user = userip[i]
         if not user in agentids:
-            agentids[user] = len(agentids.keys()) 
+            agentids[user] = len(list(agentids.keys())) 
         Cagents.append(agentids[user])
         subjectdict = json.loads(subjectdata[i])
-        subject = int(subjectdict.keys()[0])
+        subject = int(list(subjectdict.keys())[0])
         if not subject in subjectids:
-            subjectids[subject] = len(subjectids.keys())
+            subjectids[subject] = len(list(subjectids.keys()))
             reverse_subjectids[subjectids[subject]] = subject
         Cobjects.append(subjectids[subject])    
         
@@ -61,11 +61,11 @@ osmdata = pd.read_csv(osmfile, sep=',', parse_dates=False, index_col=False, skip
                     header=None, names=['subject_id','value'])
 osm_subjects = osmdata["subject_id"]# alpha0 = np.tile(alpha0[:,:,np.newaxis], (1,1,len(agentids)))
 osm_scores = osmdata["value"] - 1
-agentids["OSMData"] = len(agentids.keys())
+agentids["OSMData"] = len(list(agentids.keys()))
 for i, subject in enumerate(osm_subjects):
     Cagents.append(agentids["OSMData"])
     if not subject in subjectids:
-        subjectids[subject] = len(subjectids.keys())
+        subjectids[subject] = len(list(subjectids.keys()))
         reverse_subjectids[subjectids[subject]] = subject
     Cobjects.append(subjectids[subject])
     score = osm_scores[i]
@@ -96,8 +96,8 @@ plt.figure()
 k = 1 # worker ID to plot
 alpha_k  = combiner.alpha[:, :, k]
 pi_k = alpha_k / np.sum(alpha_k, axis=1)[:, np.newaxis]
-print "Confusion matrix for worker %i" % k
-print pi_k
+print("Confusion matrix for worker %i" % k)
+print(pi_k)
     
 x = np.arange(20) / 20.0
 for j in range(alpha_k.shape[0]):
@@ -121,8 +121,8 @@ maxxarr = np.zeros(nsubjects)
 maxyarr = np.zeros(nsubjects)
 for i, subjectstr in enumerate(subjectdata):
     subject = json.loads(subjectstr)
-    sidstr = subject.keys()[0]
-    sid = int(subject.keys()[0])
+    sidstr = list(subject.keys())[0]
+    sid = int(list(subject.keys())[0])
     if not sid in subjectids:
         continue 
     sidx = subjectids[sid]
@@ -146,8 +146,8 @@ for subject in results_subjectids:
         nepal_subjects.append(subjectids[subject])
 preds_nepal = preds[nepal_subjects,:]
 
-print np.around(combiner.alpha[:,:,56] - alpha0[:,:,-1], 3)
-print np.around(np.sum(combiner.alpha[:,:,0:56], axis=2),3)
+print(np.around(combiner.alpha[:,:,56] - alpha0[:,:,-1], 3))
+print(np.around(np.sum(combiner.alpha[:,:,0:56], axis=2),3))
 
 idxs = (Cagents==56)
 objs = Cobjects[idxs]
@@ -155,14 +155,14 @@ scores = Cscores[idxs]
 osm_top_objs = objs[scores<=2]
 preds_osmtop = np.around(preds[osm_top_objs,:], 2)
 local_conflict_ids = osm_top_objs[np.sum(preds_osmtop[:,0:3],axis=1)<0.5]
-print np.around(preds[local_conflict_ids,:], 2)
+print(np.around(preds[local_conflict_ids,:], 2))
 
 osm_empty_objs = objs[scores>=4]
 preds_osmempty = np.around(preds[osm_empty_objs,:], 2)
 local_conflict_ids = osm_empty_objs[np.sum(preds_osmempty[:,2:],axis=1)<0.2]
 zoo_conflict_ids = results_subjectids[local_conflict_ids]
-print zoo_conflict_ids
-print np.around(preds[local_conflict_ids,:], 2)
+print(zoo_conflict_ids)
+print(np.around(preds[local_conflict_ids,:], 2))
 
 coordsfile = './data/transformed_subject_id_metadata_Kathmandu_ring_1.csv'
 coordsdata = pd.read_csv(coordsfile, sep=',', parse_dates=False, index_col=False, usecols=[0,2,3], 
@@ -242,7 +242,7 @@ plt.savefig('./output/popdensity.png', bbox_inches='tight', pad_inches=0, transp
 gridsize_lat = float(np.max(xcoords)-np.min(xcoords)) / float(nx)
 gridsize_lon = float(np.max(ycoords)-np.min(ycoords)) / float(ny)
 
-print np.min(xcoords)
-print np.max(xcoords) + gridsize_lat
-print np.min(ycoords)
-print np.max(ycoords) + gridsize_lon
+print(np.min(xcoords))
+print(np.max(xcoords) + gridsize_lat)
+print(np.min(ycoords))
+print(np.max(ycoords) + gridsize_lon)

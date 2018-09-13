@@ -59,7 +59,7 @@ def rand_antoniak(alpha, n):
         p[i] *= aa
         aa *= alpha
     p = np.array(p) / np.array(p).sum()
-    return choice(range(1, n+1), p=p)
+    return choice(list(range(1, n+1)), p=p)
 
 rand_antoniak(.5, 10)
 

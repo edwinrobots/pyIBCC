@@ -452,8 +452,8 @@ def gen_synth_data():
             
         cluster_counts[r[k]] += 1
     
-    print "Cluster memberships: "
-    print r
+    print("Cluster memberships: ")
+    print(r)
     
     pi = np.zeros((nclasses, nclasses, nworkers))
     for j in range(nclasses):
@@ -533,7 +533,7 @@ if __name__ == '__main__':
         from sklearn.metrics import accuracy_score
     
         acc = accuracy_score(t, predictedclass)
-        print "accuracy: %f" % acc
+        print("accuracy: %f" % acc)
         acc_results.append(acc)
           
     import matplotlib.pyplot as plt
