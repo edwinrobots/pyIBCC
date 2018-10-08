@@ -121,7 +121,15 @@ class IBCC(object):
             self.nu0 = nu0
             self.K = K
             self.uselowerbound = uselowerbound
-            
+
+        if self.nu0 is None:
+            self.nu0 = np.ones(self.nclasses)
+
+        if self.alpha0 is None:
+            self.alpha0 = np.ones((self.nclasses, self.nscores))
+            if self.nclasses <= self.nscores:
+                self.alpha0[range(self.nclasses), range(self.nscores)] += 1
+
         # Ensure we have float arrays so we can do division with these parameters properly
         self.nu0 = np.array(self.nu0).astype(float)
         if self.nu0.ndim==1:
@@ -342,7 +350,11 @@ class IBCC(object):
         
         self.Ctest = {}
         for l in range(self.nscores):
-            self.Ctest[l] = C[l][self.testidxs, :]
+            if self.testidxs is not None:
+                self.Ctest[l] = C[l][self.testidxs, :]
+            else:
+                self.Ctest[l] = C[l]
+
         # Reset the pre-calculated data for the training set in case goldlabels has changed
         self.alpha_tr = []
         
@@ -357,7 +369,27 @@ class IBCC(object):
         self.E_t_sparse = self.E_t  # save the sparse version
         self.E_t = E_t_full
         
-# Run the inference algorithm --------------------------------------------------------------------------------------    
+# Run the inference algorithm --------------------------------------------------------------------------------------
+
+    def get_trained_parameters(self):
+        '''
+        Returns a set of the trained posterior parameters. These can be used to initialise a new model instance by
+        passing into the constructor.
+
+        Returns
+        -------
+        nclasses: number of true class label values.
+
+        nscores: number of score values that the workers can assign.
+
+        alpha: posterior alpha parameters.
+
+        nu: posterior nu parameters.
+
+        K: number of workers.
+        '''
+        return self.nclasses, self.nscores, self.alpha, self.nu, self.K
+
     def combine_classifications(self, crowdlabels, goldlabels=None, testidxs=None, optimise_hyperparams=0, maxiter=200, 
                                 table_format=False):
         '''
@@ -514,7 +546,9 @@ class IBCC(object):
     def _expec_t(self):
         self._lnjoint()
         joint = self.lnpCT
-        joint = joint[self.testidxs, :]
+        if self.testidxs is not None:
+            joint = joint[self.testidxs, :]
+
         # ensure that the values are not too small
         largest = np.max(joint, 1)[:, np.newaxis]
         joint = joint - largest
@@ -530,24 +564,35 @@ class IBCC(object):
         '''
         if self.uselowerbound or alldata:
             for j in range(self.nclasses):
-                data = []
+                data = None
                 for l in range(self.nscores):
                     if self.table_format_flag:
                         data_l = self.C[l] * self.lnPi[j, l, :][np.newaxis,:]
                     else:
-                        data_l = self.C[l].multiply(self.lnPi[j, l, :][np.newaxis,:])                        
-                    data = data_l if data==[] else data+data_l
-                self.lnpCT[:, j] = np.array(data.sum(axis=1)).reshape(-1) + self.lnkappa[j]
+                        data_l = self.C[l].multiply(self.lnPi[j, l, :][np.newaxis,:])
+
+                    data_l = np.array(data_l.sum(axis=1)).reshape(-1)
+
+                    data = data_l if data is None else data+data_l
+
+                self.lnpCT[:, j] = data + self.lnkappa[j]
         else:  # no need to calculate in full
             for j in range(self.nclasses):
-                data = []
+                data = None
                 for l in range(self.nscores):
                     if self.table_format_flag:
                         data_l = self.Ctest[l] * self.lnPi[j, l, :][np.newaxis,:]
                     else:
                         data_l = self.Ctest[l].multiply(self.lnPi[j, l, :][np.newaxis,:])
-                    data = data_l if data==[] else data+data_l
-                self.lnpCT[self.testidxs, j] = np.array(data.sum(axis=1)).reshape(-1) + self.lnkappa[j]
+
+                    data_l = np.array(data_l.sum(axis=1)).reshape(-1)
+
+                    data = data_l if data is None else data+data_l
+
+                if self.testidxs is not None:
+                    self.lnpCT[self.testidxs, j] = data + self.lnkappa[j]
+                else:
+                    self.lnpCT[:, j] = np.array(data).reshape(-1) + self.lnkappa[j]
         
     def _post_lnkappa(self):
         lnpKappa = gammaln(np.sum(self.nu0)) - np.sum(gammaln(self.nu0)) + sum((self.nu0 - 1) * self.lnkappa)
@@ -613,8 +658,13 @@ class IBCC(object):
     def _get_hyperparams(self):
         if self.clusteridxs_alpha0 != []:
             alpha0 = self.alpha0_cluster
+
         elif self.optimise_alpha0_diagonals:
-            alpha0 = [np.mean(np.diag(alpha0)), np.sum(alpha0)-np.sum(np.diag(alpha0)) / (self.alpha0.shape[0]**2 - self.alpha0.shape[0])]           
+            alpha0 = self.alpha0
+            alpha0_diags = alpha0[range(self.nclasses), range(self.nclasses)]
+            off_diag_idxs = np.mod(np.arange(self.nclasses) + 1, self.nclasses)
+            alpha0_scale = alpha0[range(self.nclasses), off_diag_idxs]
+            alpha0 = np.append(alpha0_diags, alpha0_scale)
         else:
             alpha0 = self.alpha0
 
@@ -695,7 +745,11 @@ class IBCC(object):
         opt_hyperparams = self._set_hyperparams(opt_hyperparams)
         msg = "Optimal hyper-parameters: "
         for param in opt_hyperparams:
-            msg += str(param)
+            if not np.isscalar(param):
+                for val in param:
+                    msg += str(val) + ', '
+            else:
+                msg += str(param) + ', '
         logging.debug(msg)
         
         return self.E_t

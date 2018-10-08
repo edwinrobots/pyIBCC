@@ -59,17 +59,39 @@ The code was tested with python3. You need to install numpy and scipy. In Ubuntu
 
 ### Running pyIBCC
 
-Follow these steps. 
+#### Using Configuration Files and DataHandler Object
+
+Follow these steps to run pyIBCC using the data handler object and a configuration file -- this is the simplest
+way to run an example. However, it makes use of additional code for loading and outputting data to files.
+If this is not needed, please see the next subsection.
 
 1. Save/check out the code, and make sure your input data is in the correct format. Example data files are provided, so test you can run the code with these first.
 
 1. Set up the configuration file as described below so IBCC can find your input data.
 
-1. In a command line, go to the directory where you downloaded the code, e.g. `cd ./pyIbcc/python`.
+1. In a command line, go to the directory where you downloaded the code, e.g. `cd ./pyIBCC/python`.
 
 1. In the command line, call `python ibcc.py "<config_filename>"`. Replace <config_filename> with the path to your config file.
 
-1. Look at the results in `./pyIbcc/python/output.csv` or wherever you configured the output.csv to be saved.
+1. Look at the results in `./pyIBCC/python/output.csv` or wherever you configured the output.csv to be saved.
+
+#### Calling IBCC directly from Python
+
+You can also run pyIBCC without the configuration file or data handler.
+This is a good option if integrating IBCC into some other code, avoiding the use of text files, or
+if to simplify the code that is needed to run IBCC. In this case:
+
+1. Construct the object: you can set nu0 and alpha0 priors, or use the default arguments.
+
+1. Call combine_classifications to train and predict in one go.
+
+1. To extract the trained parameter values from the model, you can call get_trained_parameters(). The returned
+values can be passed to the constructor of a new IBCC instance, which can then be used for prediction without repeating
+the training procedure.
+
+1. To use the new IBCC instance to make predictions for new data, call combine_classifications with the test data.
+
+1. Since IBCC may cache some objects, it is safest to use a new instance of IBCC for each new dataset.
 
 ### Configuration
 
@@ -95,7 +117,7 @@ The configuration file "config/my_project.py" can be copied and modified to suit
 
 The code will write the outputs to csv files.
 
-1. `outputs.csv`: write out the predictions for the target class labels. Has the following columns: subjectID, p(t=0), p(t=1),... PyIBCC will write one column for each of the target classes, so that a binary problem will result in an output file with two columns. 
+1. `outputs.csv`: write out the predictions for the target class labels. Has the following columns: subjectID, p(t=0), p(t=1),... pyIBCC will write one column for each of the target classes, so that a binary problem will result in an output file with two columns.
 
 1. `confMat.csv`: the expected confusion matrices are output as a CSV file. Each row is a flattened confusion matrix for a single worker. Each entry is the likelihood of the classifier's responses given objects of each target class. The confusion matrix for each classifier is therefore flattened into a single row by laying each row of the matrix end-to-end. For example, if we have  a 2-by-2 confusion matrix, line `k` in confMat.csv shows the confusion matrix `\pi` for worker `k`. Column 1 in confMat.csv corresponds to `\pi_11`, column 2 is `\pi_12`, column 3 is `\pi_21`, column 4 is `\pi_22`.
 
