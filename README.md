@@ -7,7 +7,7 @@ This page will describe how to run the IBCC code and what data format it require
 
 For more information about the method, please see the following:
 1. "Bayesian combination of multiple, imperfect classifiers", Simpson, Roberts, Smith, Lintott (2011): www.orchid.ac.uk/eprints/7/4/vbibcc_workshop.pdf
-1. The method is a variant of "Bayesian Classifier Combination" described by Kim and Ghahramani (2012): proceedings.mlr.press/v22/kim12/kim12.pdf
+1. The method is a variant of "Bayesian Classifier Combination" described by Kim and Ghahramani (2012): http://proceedings.mlr.press/v22/kim12/kim12.pdf
 
 For anything that's unclear here, please ask edwin.simpson@gmail.com.
 
