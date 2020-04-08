@@ -51,3 +51,10 @@ output/popdensity_mace_probabilities.csv
 output/popdensity.png
 output/popdensity_pyibcc_predicted_labels.csv
 output/popdensity_pyibcc_probabilities.csv
+*.bak
+.idea
+.idea/misc.xml
+.idea/modules.xml
+.idea/pyIBCC.iml
+.idea/vcs.xml
+.idea/workspace.xml
