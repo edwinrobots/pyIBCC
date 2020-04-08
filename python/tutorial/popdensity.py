@@ -11,18 +11,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 def load_zoo_data(zoodatafile):
-    # format of file: 
+    # format of file:
     # user_id,user_ip,workflow_id,created_at,gold_standard,expert,metadata,annotations,subject_data
-    zoodata = pd.read_csv(zoodatafile, sep=',', parse_dates=False, index_col=False, usecols=[0,1,7,8], 
+    zoodata = pd.read_csv(zoodatafile, sep=',', parse_dates=False, index_col=False, usecols=[0,1,7,8],
                           skipinitialspace=True, quotechar='"')
     userid = zoodata['user_id']
     userip = zoodata['user_ip']
     subjectdata = zoodata['subject_data']
     annotations = zoodata['annotations']
-        
+
     Cagents = []
     Cobjects = []
-    Cscores = []    
+    Cscores = []
     for i, user in enumerate(userid):
         annotation = json.loads(annotations[i])
         score = annotation[0]["value"]
@@ -33,15 +33,15 @@ def load_zoo_data(zoodatafile):
         if not user or np.isnan(user):
             user = userip[i]
         if not user in agentids:
-            agentids[user] = len(list(agentids.keys())) 
+            agentids[user] = len(list(agentids.keys()))
         Cagents.append(agentids[user])
         subjectdict = json.loads(subjectdata[i])
         subject = int(list(subjectdict.keys())[0])
         if not subject in subjectids:
             subjectids[subject] = len(list(subjectids.keys()))
             reverse_subjectids[subjectids[subject]] = subject
-        Cobjects.append(subjectids[subject])    
-        
+        Cobjects.append(subjectids[subject])
+
     return Cagents, Cobjects, Cscores, subjectdata
 
 # LOAD CROWDSOURCED DATA ----------------------------------------------
@@ -53,11 +53,11 @@ subjectids = {}
 reverse_subjectids = {}
 
 Cagents, Cobjects, Cscores, subjectdata = load_zoo_data(zoodatafile)
-     
+
 # APPEND DATA FROM OSM to CROWDSOURCED DATASET -------------------------
-     
+
 osmfile = "./data/OSM_labels.csv"
-osmdata = pd.read_csv(osmfile, sep=',', parse_dates=False, index_col=False, skipinitialspace=True, quotechar='"', 
+osmdata = pd.read_csv(osmfile, sep=',', parse_dates=False, index_col=False, skipinitialspace=True, quotechar='"',
                     header=None, names=['subject_id','value'])
 osm_subjects = osmdata["subject_id"]# alpha0 = np.tile(alpha0[:,:,np.newaxis], (1,1,len(agentids)))
 osm_scores = osmdata["value"] - 1
@@ -70,17 +70,17 @@ for i, subject in enumerate(osm_subjects):
     Cobjects.append(subjectids[subject])
     score = osm_scores[i]
     Cscores.append(score)
-    
+
 # RUN IBCC --------------------------------------------------------------
-    
+
 Cagents = np.array(Cagents)[:,np.newaxis]
 Cobjects = np.array(Cobjects)[:, np.newaxis]
-Cscores = np.array(Cscores)[:, np.newaxis]    
+Cscores = np.array(Cscores)[:, np.newaxis]
 C = np.concatenate((Cagents,Cobjects,Cscores), axis=1)
 alpha0 = np.ones((6,6,len(agentids)))
 #alpha0[:, :, 5] = 2.0
 alpha0[np.arange(6),np.arange(6),:] = 1.01
-# alpha0[:,:,:] = np.array([[4.0, 2.0, 1.5, 1.0, 1.0, 2.0], [2.0, 4.0, 2.0, 1.5, 1.0, 2.5], [1.5, 2.0, 4.0, 2.0, 1.5, 2.5], 
+# alpha0[:,:,:] = np.array([[4.0, 2.0, 1.5, 1.0, 1.0, 2.0], [2.0, 4.0, 2.0, 1.5, 1.0, 2.5], [1.5, 2.0, 4.0, 2.0, 1.5, 2.5],
 #                         [1.0, 1.5, 2.0, 4.0, 2.0, 2.5], [1.0, 1.0, 1.5, 2.0, 4.0, 3.0], [1.0, 1.0, 1.0, 1.0, 1.0, 4.0]])[:,:,np.newaxis]
 # alpha0 = np.tile(alpha0[:,:,np.newaxis], (1,1,len(agentids)))
 #alpha0[np.arange(6),np.arange(6),-1] += 20
@@ -98,7 +98,7 @@ alpha_k  = combiner.alpha[:, :, k]
 pi_k = alpha_k / np.sum(alpha_k, axis=1)[:, np.newaxis]
 print("Confusion matrix for worker %i" % k)
 print(pi_k)
-    
+
 x = np.arange(20) / 20.0
 for j in range(alpha_k.shape[0]):
     pdfj = beta.pdf(x, alpha_k[j, j], np.sum(alpha_k[j, :]) - alpha_k[j,j] )
@@ -124,19 +124,19 @@ for i, subjectstr in enumerate(subjectdata):
     sidstr = list(subject.keys())[0]
     sid = int(list(subject.keys())[0])
     if not sid in subjectids:
-        continue 
+        continue
     sidx = subjectids[sid]
     minxarr[sidx] = subject[sidstr]["minx"]
     minyarr[sidx] = subject[sidstr]["miny"]
     maxxarr[sidx] = subject[sidstr]["maxx"]
     maxyarr[sidx] = subject[sidstr]["maxy"]
-    
+
 results = pd.DataFrame(data={'subject_id':results_subjectids, 'priority1': preds[:,0], 'priority2':preds[:,1],
-                             'priority3':preds[:,2], 'priority4':preds[:,3], 'priority5':preds[:,4], 
-                             'no_priority':preds[:,5], 'minx':minxarr, 'miny':minyarr, 'maxx':maxxarr, 'maxy':maxyarr}, 
+                             'priority3':preds[:,2], 'priority4':preds[:,3], 'priority5':preds[:,4],
+                             'no_priority':preds[:,5], 'minx':minxarr, 'miny':minyarr, 'maxx':maxxarr, 'maxy':maxyarr},
                        index=None)
-results.to_csv("./output/zooresults_osm.csv", sep=',', index=False, float_format='%1.4f', 
-               cols=['subject_id','priority1','priority2','priority3','priority4','priority5','no_priority','minx','miny','maxx','maxy'])    
+results.to_csv("./output/zooresults_osm.csv", sep=',', index=False, float_format='%1.4f',
+               cols=['subject_id','priority1','priority2','priority3','priority4','priority5','no_priority','minx','miny','maxx','maxy'])
 
 # TRANSLATING RESULTS BACK TO LATITUDE/LONGITUDE COORDINATES --------------------------------
 
@@ -165,7 +165,7 @@ print(zoo_conflict_ids)
 print(np.around(preds[local_conflict_ids,:], 2))
 
 coordsfile = './data/transformed_subject_id_metadata_Kathmandu_ring_1.csv'
-coordsdata = pd.read_csv(coordsfile, sep=',', parse_dates=False, index_col=False, usecols=[0,2,3], 
+coordsdata = pd.read_csv(coordsfile, sep=',', parse_dates=False, index_col=False, usecols=[0,2,3],
                     skipinitialspace=True, quotechar='"', header=None, names=['subject_id','x','y'] )
 
 osmresults = np.zeros(len(osm_subjects))
@@ -190,9 +190,9 @@ crowdresults = np.zeros(len(osm_subjects))
 while c>=0:
     crowdresults[cs[:,c]>=0.9] = c
     c -= 1
-    
+
 # chose the minimum from the two sets
-combinedresults = crowdresults#np.min([osmresults, crowdresults], axis=0)    
+combinedresults = crowdresults#np.min([osmresults, crowdresults], axis=0)
 
 output = np.concatenate((osm_subjects[:, np.newaxis], combinedresults[:, np.newaxis]), axis=1)
 
@@ -219,8 +219,8 @@ fig = plt.figure(frameon=False)#, figsize=(float(nx)/dpi,float(ny)/dpi))
 plt.autoscale(tight=True)
 #Can also try interpolation=nearest or none
 ax = fig.add_subplot(111)
-ax.set_axis_off()    
-        
+ax.set_axis_off()
+
 # bin the results so we get contours rather than blurred map
 # grid = grid.T
 contours = np.zeros((grid.shape[0], grid.shape[1], 4))#bcc_pred.copy()
@@ -229,7 +229,7 @@ contours[grid==3, :] = [0, 1, 0, 0.7]
 contours[grid==2, :] = [1, 1, 0, 0.7]
 contours[grid==1, :] = [1, 0.2, 0, 0.7]
 contours[grid==0, :] = [1, 0, 0.5, 0.7]
- 
+
 plt.imshow(contours, aspect=None, origin='lower', interpolation='nearest')
 
 fig.tight_layout(pad=0,w_pad=0,h_pad=0)
@@ -237,7 +237,7 @@ ax = plt.gca()
 ax.xaxis.set_major_locator(plt.NullLocator())
 ax.yaxis.set_major_locator(plt.NullLocator())
 
-plt.savefig('./output/popdensity.png', bbox_inches='tight', pad_inches=0, transparent=True, dpi=96)  
+plt.savefig('./output/popdensity.png', bbox_inches='tight', pad_inches=0, transparent=True, dpi=96)
 
 gridsize_lat = float(np.max(xcoords)-np.min(xcoords)) / float(nx)
 gridsize_lon = float(np.max(ycoords)-np.min(ycoords)) / float(ny)

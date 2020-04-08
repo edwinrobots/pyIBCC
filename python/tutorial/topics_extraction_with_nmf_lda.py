@@ -72,7 +72,7 @@ doc_topic_prior = 10000
 
 lda = LatentDirichletAllocation(n_topics=n_topics, max_iter=5,
                                 learning_method='online', learning_offset=50.,
-                                random_state=0, 
+                                random_state=0,
                                 doc_topic_prior=doc_topic_prior,
                                 topic_word_prior=topic_word_prior)
 t0 = time()
@@ -86,4 +86,3 @@ print_top_words(lda, tf_feature_names, n_top_words)
 # Model parameters:
 #lda.components_ # K x W
 doc_topics_distr = lda.transform(tf)
-

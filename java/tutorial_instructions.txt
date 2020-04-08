@@ -1,0 +1,24 @@
+--- Steps to run the tutorial examples from a command line ---
+
+1. Go to the src directory:
+
+cd /path/to/pyIBCC/java/src 
+
+2. Compile the population density example:
+
+javac macetutorial/PopDensitySimple.java
+
+3. Run the population density example:
+
+java macetutorial.PopDensitySimple
+
+This scipt does the follwing:
+ - Loads some real crowdsourcing data for a satellite image labelling project from "./data/crowd_matrix_nepal_2015.csv". This task involved volunteers classifying images into 6 categories, depending on the density of housing shown in the images.
+ - Line 24 combines the data using the MACE algorithm
+ - Line 19 changes the algorithm from maximum likelihood EM to variational Bayes (VB). If you select VB, the model will use priors for the worker competences.
+ - Lines 20 & 21 set the prior hyperparameters, alpha and beta, for the prior competences when using VB.
+ - The results are saved to the files 'path/to/pyIBCC/output/popdensity_mace_probabilities.csv'
+and 'path/to/pyIBCC/output/popdensity_mace_predicted_labels.csv'. 
+ - The code also saves the worker competence estimates to 'path/to/pyIBCC/output/popdensity_mace_competence.csv'. 
+
+4. Compile and run the argument annotation example in the same way as steps 2 and 3, but change the file and class names from "PopDensitySimple" to "ArgumentsSimple".
